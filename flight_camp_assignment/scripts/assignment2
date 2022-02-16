@@ -1,0 +1,141 @@
+#!/usr/bin/env python
+
+import math
+import rospy
+import tf2_ros
+import tf2_geometry_msgs
+from collections import deque
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from geometry_msgs.msg import PoseStamped, Vector3
+from crazyflie_driver.msg import Position
+
+goals = deque()
+next_goal = None
+next_goal_odom = None
+time_arriving_goal = None
+
+def pose_callback(current_position):
+	global goals
+	global next_goal
+	global next_goal_odom
+	global time_arriving_goal
+
+	if len(goals) == 0:
+		next_goal = None
+		exit(0)
+
+	next_goal = goals[0]
+	dis = math.sqrt((current_position.pose.position.x - next_goal_odom.pose.position.x)**2 + 
+			(current_position.pose.position.y - next_goal_odom.pose.position.y)**2 + 
+			(current_position.pose.position.z - next_goal_odom.pose.position.z)**2)
+	rospy.loginfo("#goals: %s, distance to next goal: %s", len(goals), dis)
+
+	if dis <= 0.15:
+		# record the time when it comes to the goal point
+		if not time_arriving_goal:
+			time_arriving_goal = rospy.Time.now()
+		else:
+			# stay close to the goal point for at least 3 second and move to next goal
+			if current_position.header.stamp.secs - time_arriving_goal.secs >= 5:
+				goals.popleft()
+				time_arriving_goal = None
+
+
+def set_goals():
+	global goals
+	global next_goal
+	global next_goal_odom
+
+	g = PoseStamped()
+	g.header.frame_id = 'map'
+	g.pose.position.x = 1.0
+	g.pose.position.y = 0.0
+	g.pose.position.z = 0.5
+	(g.pose.orientation.x, g.pose.orientation.y, g.pose.orientation.z, g.pose.orientation.w) = quaternion_from_euler(math.radians(0), math.radians(0), math.radians(0)) #(roll, pitch, yaw)
+	goals.append(g)
+
+	g = PoseStamped()
+	g.header.frame_id = 'map'
+	g.pose.position.x = 1.0
+	g.pose.position.y = 1.0
+	g.pose.position.z = 0.5
+	(g.pose.orientation.x, g.pose.orientation.y, g.pose.orientation.z, g.pose.orientation.w) = quaternion_from_euler(math.radians(0), math.radians(0), math.radians(0)) #(roll, pitch, yaw)
+	goals.append(g)
+
+	#g = PoseStamped()
+	#g.header.frame_id = 'map'	
+	#g.pose.position.x = 1.0
+	#g.pose.position.y = 2.0
+	#g.pose.position.z = 0.5
+	#(g.pose.orientation.x, g.pose.orientation.y, g.pose.orientation.z, g.pose.orientation.w) = quaternion_from_euler(math.radians(0), math.radians(0), math.radians(0)) #(roll, pitch, yaw)
+	#goals.append(g)
+
+	#g = PoseStamped()
+	#g.header.frame_id = 'map'	
+	#g.pose.position.x = 1.0
+	#g.pose.position.y = 0.0
+	#g.pose.position.z = 0.5
+	#(g.pose.orientation.x, g.pose.orientation.y, g.pose.orientation.z, g.pose.orientation.w) = quaternion_from_euler(math.radians(0), math.radians(0), math.radians(0)) #(roll, pitch, yaw)
+	#goals.append(g)
+
+	rospy.loginfo("Created %s goals", len(goals))
+	next_goal = goals[0]
+	next_goal_odom = next_goal
+
+
+def publish_goal():
+	global goals
+	global next_goal
+	global next_goal_odom
+
+	if not next_goal:
+		return
+
+	goal = next_goal
+	#rospy.loginfo("publish goal %s", goal)
+	#rospy.loginfo("publish goals %s", goals[0])
+	goal.header.stamp = rospy.Time(0)
+
+	if not tf_buf.can_transform(goal.header.frame_id, 'cf1/odom', goal.header.stamp):
+		rospy.logwarn_throttle(1.0, 'No transform from %s to cf1/odom' % goal.header.frame_id)
+		return
+
+        rospy.loginfo('transform goal from %s to odom' % goal.header.frame_id)
+    
+	goal_odom = tf_buf.transform(goal, 'cf1/odom')
+	next_goal_odom = goal_odom
+
+	c_out = Position()
+	c_out.header.stamp = rospy.Time.now()
+	c_out.header.frame_id = goal_odom.header.frame_id
+	c_out.x = goal_odom.pose.position.x
+	c_out.y = goal_odom.pose.position.y
+	c_out.z = goal_odom.pose.position.z
+	roll, pitch, yaw = euler_from_quaternion((goal_odom.pose.orientation.x, 
+						  goal_odom.pose.orientation.y, 
+						  goal_odom.pose.orientation.z, 
+						  goal_odom.pose.orientation.w))
+	c_out.yaw = math.degrees(yaw)
+
+	goal_publisher.publish(c_out)
+
+
+rospy.init_node('assignment2')
+goal_publisher  = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
+pose_subscriber = rospy.Subscriber('/cf1/pose', PoseStamped, pose_callback)
+
+tf_buf   = tf2_ros.Buffer()
+tf_lstn  = tf2_ros.TransformListener(tf_buf)
+
+def main():
+	rate = rospy.Rate(20)  # Hz
+	
+	for _ in range(20):
+		set_goals()
+	
+	while not rospy.is_shutdown():
+		publish_goal()
+		rate.sleep()
+
+if __name__ == '__main__':
+	main()

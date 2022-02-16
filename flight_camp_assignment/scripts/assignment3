@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import cv2
+import rospy
+import numpy as np
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+
+
+def camera_image_cb(ros_img):
+	try:
+		bgr_img = bridge.imgmsg_to_cv2(ros_img, "bgr8")
+	except CvBridgeError as e:
+		print(e)
+
+	# find red contours
+	image = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
+	lower = np.array([155,25,0])
+	upper = np.array([179,255,255])
+	mask = cv2.inRange(image, lower, upper)
+
+	# filter noises
+	img = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((4,4)))
+	_, threshold = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)
+	_, contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+	for cnt in contours:
+	    approx = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt, True), True)
+	    x = approx.ravel()[0]
+	    y = approx.ravel()[1]
+	    
+	    rospy.loginfo("Find sign at: %s", (x, y))
+	    cv2.drawContours(bgr_img, [approx], 0, (255,255,255), 3)
+	    cv2.putText(bgr_img, "Red Sign", (x, y), cv2.FONT_HERSHEY_COMPLEX, 1, (0))
+
+	try:
+		pub_bw_image.publish(bridge.cv2_to_imgmsg(bgr_img, "bgr8"))
+	except CvBridgeError as e:
+		print(e)
+
+
+rospy.init_node('assignment3')
+sub_camera_image = rospy.Subscriber('/cf1/camera/image_raw', Image, camera_image_cb)
+pub_bw_image = rospy.Publisher('/assignment3_image', Image, queue_size=2)
+bridge = CvBridge()
+
+
+def main():
+	rate = rospy.Rate(20)
+	while not rospy.is_shutdown():
+		rate.sleep()
+
+if __name__ == '__main__':
+	main()
