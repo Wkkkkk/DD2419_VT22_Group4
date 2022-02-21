@@ -1,17 +1,16 @@
- import json
+import json
 from math import *
 import numpy as np
-import matplotlib.pyplot as plt     # Comment out if you are going to simulate in Matlab
+import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial import ConvexHull
 import mpl_toolkits.mplot3d as a3
 
 
 class Node:
-    def __init__(self, index, parent=None, yaw=0):
-        self.x = index[0]
-        self.y = index[1]
-        self.z = index[2]
+    def __init__(self, index, parent=None, position=np.zeros(3), yaw=0):
+        self.index = index
+        self.position = position
         self.yaw = yaw
         self.parent = parent
         self.children = []
@@ -22,85 +21,114 @@ class Node:
 
 class Planning:
     def __init__(self, root, goal, grid):
-        self.real_goal = (goal.x, goal.y, goal.z)
         self.root = root
-        root.x, root.y, root.z = grid.convert_to_index((root.x,root.y,root.z))
-        grid[(root.x, root.y, root.z)] = grid.visited_space
         self.goal = goal
-        goal.x, goal.y, goal.z = grid.convert_to_index((goal.x, goal.y, goal.z))
+        grid[root.index] = root
+        grid[goal.index] = goal
+
         self.grid = grid
+
         X = grid.dim[0]
         Y = grid.dim[1]
-        Z = grid.dim[2]
-        self.neighbors = lambda x, y, z: [(i, j, k) for i in range(x - 1, x + 2)
-                                         for j in range(y - 1, y + 2)
-                                         for k in range(z - 1, z + 2)
-                                         if ((0 <= i <= X) and (0 <= j <= Y) and (0 <= k <= Z)
-                                             and grid[(i, j, k)] == grid.free_space)]
+        self.neighbours = lambda x, y: [grid[(i, j)] for i in range(x-1, x+2)
+                                         for j in range(y-1, y+2)
+                                         if ((0 <= i <= X) and (0 <= j <= Y) and i != x and j != y
+                                             and grid[(i, j)] != grid.occupied_space)]
 
     def compute_cost(self, node):
-        pos_child = np.array([node.x, node.y, node.z])
-        pos_parent = np.array([node.parent.x, node.parent.y, node.parent.z])
-        pos_goal = np.array([self.goal.x, self.goal.y, self.goal.z])
-        node.cost2come = node.parent.cost2come + np.linalg.norm(pos_child-pos_parent)
-        node.cost2go = np.linalg.norm(pos_child-pos_goal)
+        if node.parent is self.root:
+            node.cost2come = np.linalg.norm(node.position - node.parent.position)
+        else:
+            node.cost2come = node.parent.cost2come + np.linalg.norm(node.position-node.parent.position)
+
+        H_path = self.grid.trajectory(node.index, self.goal.index, True)
+
+        prev_cell = node.position
+        for cell in H_path[1:]:
+            pos2D = self.grid.index_to_world(cell)
+            cell_pos = np.array([pos2D[0], pos2D[1], self.root.position[2]])
+            node.cost2go += np.linalg.norm(prev_cell-cell_pos)
+            prev_cell = cell_pos
+
         node.cost = node.cost2go + node.cost2come
 
     def run(self):
-        p = self.root
         goal_found = False
-        while not goal_found:
-            children = self.neighbors(p.x, p.y, p.z)
-            best_node = Node(children[0], p)
-            self.grid[(best_node.x, best_node.y, best_node.z)] = self.grid.visited_space
-            self.compute_cost(best_node)
-            for child in children[1:]:
-                node = Node(child, p)
-                self.grid[(node.x, node.y, node.z)] = self.grid.visited_space
-                self.compute_cost(node)
-                if node.x == self.goal.x and node.y == self.goal.y and node.z == self.goal.z:
-                    goal_found = True
-                    self.goal.parent = p
-                    break
+        open_set = []
+        closed_set = set()
 
-                if node.cost < best_node.cost:
-                    best_node = node
-            p = best_node
+        open_set.append(self.root)
 
-        self.goal.x, self.goal.y, self.goal.z = self.real_goal
-        q = self.goal.parent
-        while q is not self.root:
-            q.x, q.y, q.z = self.grid.index_to_world(np.array([q.x, q.y, q.z]))
-            q = q.parent
+        while len(open_set) > 0:
+            node = open_set[0]
+            for e in open_set:
+                if e.cost <= node.cost:
+                    if e.cost2go < node.cost2go:
+                        node = e
+
+            open_set.remove(node)
+            closed_set.add(node)
+
+            if node is self.goal:
+                goal_found = True
+                break
+
+            for neighbour in self.neighbours(node.index[0], node.index[1]):
+                if neighbour in closed_set:
+                    continue
+
+                cost2neighbour = node.cost2come + np.linalg.norm(node.position-neighbour.position)
+                if cost2neighbour < neighbour.cost2come or neighbour not in open_set:
+                    neighbour.parent = node
+                    self.compute_cost(neighbour)
+
+                    if neighbour not in open_set:
+                        open_set.append(neighbour)
+
+        if goal_found:
+            node = self.goal
+            while node is not self.root:
+                q = node.parent
+                while q is not self.root:
+                    q = q.parent
+                    if not self.grid.trajectory(node.index, q.index, False):
+                        node.parent = q
+                    else:
+                        break
+                p = node.parent
+                p.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
+                node = p
+        else:
+            print("Could not find a path to the goal!")
 
 
 class GridMap:
-    def __init__(self, bounds, radius, resolution):
+    def __init__(self, bounds, radius, resolution, obstacles, root_z):
         self.occupied_space = 1
-        self.free_space = 0
-        self.visited_space = 2
         self.radius = radius
         self.bounds = bounds
         self.resolution = resolution
-        x = int((bounds[1][0] - bounds[0][0]) / resolution)+1
-        y = int((bounds[1][1] - bounds[0][1]) / resolution)+1
-        z = int((bounds[1][2] - bounds[0][2]) / resolution)+1
-        self.map = np.zeros((x, y, z))
-        self.dim = [x-1, y-1, z-1]
 
-    def __getitem__(self, pos):
-        x, y, z = pos
-        return self.map[x][y][z]
+        X = int((self.bounds[1][0] - self.bounds[0][0]) / self.resolution) + 1
+        Y = int((self.bounds[1][1] - self.bounds[0][1]) / self.resolution) + 1
+        self.dim = [X - 1, Y - 1]
+        self.map = self.create_map(obstacles, root_z)
 
-    def __setitem__(self, pos, val):
-        x, y, z = pos
-        self.map[x][y][z] = val
+    def __getitem__(self, index):
+        x, y = index
+        return self.map[x][y]
+
+    def __setitem__(self, index, val):
+        x, y = index
+        self.map[x][y] = val
 
     def convert_to_index(self, pos):
-        float_index = (pos - self.bounds[0])/self.resolution
+        float_index = (pos[0:2] - self.bounds[0][0:2])/self.resolution
         return float_index.astype(int)
 
-    def insert_obstacles(self, obstacles):
+    def create_map(self, obstacles, root_z):
+        map = np.empty((self.dim[0]+1, self.dim[1]+1), dtype=object)
+
         for obs in obstacles:
             v1 = np.array(obs["start"])
             v2 = np.array(obs["stop"])
@@ -114,10 +142,6 @@ class GridMap:
                 sign2[1] = -1
             else:
                 sign1[1] = -1
-            if v1[2] > v2[2]:
-                sign2[2] = -1
-            else:
-                sign1[2] = -1
 
             index1 = self.convert_to_index(v1+self.radius*sign1)
             index2 = self.convert_to_index(v2+self.radius*sign2)
@@ -133,64 +157,79 @@ class GridMap:
             else:
                 min_y = index1[1]
                 max_y = index2[1]
-            if index1[2] > index2[2]:
-                min_z = index2[2]
-                max_z = index1[2]
-            else:
-                min_z = index1[2]
-                max_z = index2[2]
 
             for x in range(min_x, max_x+1):
                 for y in range(min_y, max_y+1):
-                    for z in range(min_z, max_z+1):
-                        self.map[x][y][z] = self.occupied_space
+                    map[x][y] = self.occupied_space
+
+        for x in range(0, self.dim[0]+1):
+            for y in range(0, self.dim[1]+1):
+                if map[x][y] != self.occupied_space:
+                    index = np.array([x, y])
+                    pos2D = self.index_to_world(index)
+                    map[x][y] = Node(index, None, np.array([pos2D[0], pos2D[1], root_z]))
+
+        return map
 
     def occupied_cell(self, index):
-        if self.map[index[0]][index[1]][index[2]] == self.occupied_space:
+        if self.map[index[0]][index[1]] == self.occupied_space:
             return True
         else:
             return False
 
-    """def occupied_trajectory(self, start, end):
-        (start_x, start_y, start_z) = start
-        (end_x, end_y, end_z) = end
-        x = start_x
-        y = start_y
-        (dx, dy) = (fabs(end_x - start_x), fabs(end_y - start_y))
-        n = dx + dy
-        x_inc = 1
-        if end_x <= start_x:
+    def trajectory(self, start, end, returnList):
+        """ Bresenham's line algorithm """
+        x_start, y_start = start
+        x_end, y_end = end
+        (dx, dy) = (fabs(x_end - x_start), fabs(y_end - y_start))
+        if x_end > x_start:
+            x_inc = 1
+        else:
             x_inc = -1
-        y_inc = 1
-        if end_y <= start_y:
+        if y_end > y_start:
+            y_inc = 1
+        else:
             y_inc = -1
-        error = dx - dy
-        dx *= 2
-        dy *= 2
 
         traversed = []
-        for i in range(0, int(n)):
-            traversed.append((int(x), int(y)))
-
-            if error > 0:
-                x += x_inc
-                error -= dy
-            else:
-                if error == 0:
-                    traversed.append((int(x + x_inc), int(y)))
-                y += y_inc
-                error += dx
-
-        return False"""
+        if dx >= dy:
+            p = 2 * dy - dx
+            while x_start != x_end:
+                x_start += x_inc
+                if p >= 0:
+                    y_start += y_inc
+                    p -= 2 * dx
+                p += 2 * dy
+                if returnList:
+                    traversed.append(np.array([x_start, y_start]))
+                else:
+                    if self.map[x_start][y_start] == self.occupied_space:
+                        return True
+        elif dy >= dx:
+            p = 2 * dx - dy
+            while y_start != y_end:
+                y_start += y_inc
+                if p >= 0:
+                    x_start += x_inc
+                    p -= 2 * dy
+                p += 2 * dx
+                if returnList:
+                    traversed.append(np.array([x_start, y_start]))
+                else:
+                    if self.map[x_start][y_start] == self.occupied_space:
+                        return True
+        if returnList:
+            return traversed
+        else:
+            return False
 
     def index_to_world(self, index):
-        return self.bounds[0] + self.resolution*index + np.ones(3)*self.resolution/2
+        return self.bounds[0][0:2] + self.resolution*index + np.ones(2)*self.resolution/2
 
 
 def plotTraj(A, bounds, walls):
     fig = plt.figure(figsize=(4, 4))
     ax = fig.add_subplot(111, projection='3d')
-    n = 4
     for obs, color in zip(walls, ['b', 'r', 'g', 'y']):
         verts = np.zeros((8, 3))
         i = 0
@@ -214,7 +253,7 @@ def plotTraj(A, bounds, walls):
 
     q = A.goal
     while q is not A.root:
-        ax.scatter(q.x, q.y, q.z)
+        ax.scatter(q.position[0], q.position[1], q.position[2])
         q = q.parent
 
     for i in ["x", "y", "z"]:
@@ -225,7 +264,6 @@ def plotTraj(A, bounds, walls):
     ax.set_zlim(bounds[0][2], bounds[1][2])
 
     plt.show()
-
 
 
 def main():
@@ -240,20 +278,24 @@ def main():
     bounds = [np.array(airspace["min"]), np.array(airspace["max"])]
 
     walls = [{"start": [6.0, 3.0, 0.0], "stop": [2.0, 6.0, 3.0]},
-             {"start": [-4.0, 4.0, 0.0], "stop": [-6.0, 1.0, 3.0]},
-             {"start": [-10.0, -3.0, 0.0], "stop": [-5.0, -4.0, 3.0]},
-             {"start": [5.0, -4.0, 0.0], "stop": [6.0, -1.0, 3.0]}]
+             {"start": [-4.0, 4.0, 0.0], "stop": [-6.0, -0.5, 3.0]},
+             {"start": [-10.0, -3.0, 0.0], "stop": [5.0, -5, 3.0]},
+             {"start": [5.0, -7.5, 0.0], "stop": [6.0, -1.0, 3.0]}]
 
-    radius = 0.5
+    radius = 0.2
 
-    resolution = 0.5
+    resolution = 0.4
 
-    grid = GridMap(bounds, radius, resolution)
+    root_yaw = 0
+    root_pos = np.array([-10, -8, 1])
 
-    grid.insert_obstacles(walls)
+    goal_yaw = 0
+    goal_pos = np.array([-7.5, 2.5, 1])
 
-    root = Node([-10, -8, 1])
-    goal = Node([10, 10, 3])
+    grid = GridMap(bounds, radius, resolution, walls, root_pos[2])
+
+    root = Node(grid.convert_to_index(root_pos), None, root_pos, root_yaw)
+    goal = Node(grid.convert_to_index(goal_pos), None, goal_pos, goal_yaw)
 
     A = Planning(root, goal, grid)
 
