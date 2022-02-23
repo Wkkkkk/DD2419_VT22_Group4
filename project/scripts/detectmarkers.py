@@ -8,6 +8,8 @@ from geometry_msgs.msg import TransformStamped, Vector3
 from aruco_msgs.msg import MarkerArray
 
 
+broadcaster = tf2_ros.TransformBroadcaster()
+
 def marker_callback(marker_message):
     global broadcaster
 
@@ -30,8 +32,7 @@ def marker_callback(marker_message):
 
 def main():
     rospy.init_node('detectmarkers')
-    broadcaster = tf2_ros.TransformBroadcaster()
-    sub_aruco = rospy.Subscriber('/aruco/markers', MarkerArray, ch.marker_callback)
+    sub_aruco = rospy.Subscriber('/aruco/markers', MarkerArray, marker_callback)
     rospy.spin()
 
 
