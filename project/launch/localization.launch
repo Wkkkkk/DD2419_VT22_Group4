@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+
+<launch>
+
+  <node name="detectmarkers" pkg="project" type="detectmarkers.py" />
+  <node name="displaymarkers" pkg="project" type="displaymapmarkers.py" args="$(find dd2419_resources)/worlds_json/test.world.json"/>
+  <node name="localization" pkg="project" type="localization.py" />
+
+
+</launch>
