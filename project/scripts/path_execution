@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+
+import rospy
+import tf2_ros
+import tf2_geometry_msgs
+import math
+
+from crazyflie_driver.msg import Position
+from geometry_msgs.msg import PoseStamped
+from tf.transformations import euler_from_quaternion
+from nav_msgs.msg import Path
+
+
+def path_callback(msg):
+    global path
+    path = msg
+
+
+def pose_callback(msg):
+    global current_pose
+    current_pose = msg
+
+
+def transform2odom(m):
+    timeout = rospy.Duration(0.5)
+    if not tf_buffer.can_transform(m.header.frame_id, 'cf1/odom', m.header.stamp, timeout):
+        rospy.logwarn_throttle(5.0, 'No transform from %s to cf1/odom' % m.header.frame_id)
+        return
+
+    goal_odom = tf_buffer.transform(m, 'cf1/odom')
+
+    goal = Position()
+    goal.header.stamp = m.header.stamp
+    goal.x = goal_odom.pose.position.x
+    goal.y = goal_odom.pose.position.y
+    goal.z = goal_odom.pose.position.z
+    goal.header.frame_id = 'cf1/odom'
+    roll, pitch, yaw = euler_from_quaternion((goal_odom.pose.orientation.x,
+                                              goal_odom.pose.orientation.y,
+                                              goal_odom.pose.orientation.z,
+                                              goal_odom.pose.orientation.w))
+    goal.yaw = math.degrees(yaw)
+    return goal
+
+
+def execute_path():
+    running_stamp = path.header.stamp
+    tol = 1e-2
+    for setpoint in path.poses:
+        rate.sleep()
+        odom_point = transform2odom(setpoint)
+        if odom_point:
+            while (odom_point.x - current_pose.pose.position.x) ** 2 + (
+                    odom_point.y - current_pose.pose.position.y) ** 2 > tol and not rospy.is_shutdown():
+                pub.publish(odom_point)
+    goal = odom_point
+    while running_stamp == path.header.stamp and not rospy.is_shutdown():
+        pub.publish(goal)
+
+
+def main():
+
+    while not rospy.is_shutdown():
+        if path:
+            execute_path()
+
+
+if __name__ == "__main__":
+    rospy.init_node("path_execution")
+
+    pub = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
+
+    path = None
+
+    current_pose = None
+
+    rospy.Subscriber('/planner/path', Path, path_callback)
+    rospy.Subscriber('/cf1/pose', PoseStamped, pose_callback)
+
+    tf_buffer = tf2_ros.Buffer()
+
+    listener = tf2_ros.TransformListener(tf_buffer)
+
+    rate = rospy.Rate(10)
+
+    main()
+
+    rospy.spin()
