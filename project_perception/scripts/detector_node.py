@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 
 # An initial attempt for the detection node, I think it's better to convert it to a class (like in flight camp).
-
+import string
 from PIL import Image
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 from PIL import Image as Img
+from sensor_msgs.msg import Image
 import rospy
 
-from geometry_msgs import PoseStamped
-import detector_baseline.utils
-from detector_baseline.detector import Detector
-
+from geometry_msgs.msg import PoseStamped
+import utils
 import torch
+from detector import Detector
+import os
+dir = os.path.abspath(os.getcwd())
 
 categories = {0:"no bicycle", 1:"airport" , 2: "dangerous left", 3:"dangerous right", 4: "follow left", 
                5:"follow right", 6:"junction", 7:"no heavy truck", 8:"no parking", 9:"no stopping and parking", 
@@ -47,13 +49,16 @@ def callback(Image):
       detect_images = detect_images.to(device)
 
    # We run the detector/model/network on the image here bbs is the decoded data
-   bbs = detector(detect_images)
-
+#   bbs = detector(detect_images)
+   with torch.no_grad():
+      out = detector(detect_images)
+      bbs = detector.decode_output(out, 0.5)
+      bounding_box(bbs, cv_image)
    # This will eventually post the pose, static for now
    # sign_pose(bbs)
 
    # Here we run the function that takes the bbox parameters and print rectangles and labels in the image
-   bounding_box(bbs, cv_image)
+   
 
 # function to print bboxes
 def bounding_box(detections, cv_image):
@@ -69,13 +74,14 @@ def bounding_box(detections, cv_image):
    
    # Since bbs CAN be a list for detections of multiple images we run a for loop here but it likely only runs once since we process one 
    # image at a time.
-   for i, bbs in enumerate(detections):
-      # Pick box with highest confidance
-      bb = max(bbs[i], key=lambda x:x["confidence"])
-      x = float(bb['x'])
-      y = float(bb['y'])
-      width = float(bb['width'])
-      height = float(bb['height'])
+#   for i, bbs in enumerate(detections):
+   # Pick box with highest confidance
+   if len(detections[0]) != 0:
+      bb = max(detections[0], key=lambda j:j["confidence"])
+      x = int(bb['x'].item())
+      y = int(bb['y'].item())
+      width = int(bb['width'].item())
+      height = int(bb['height'].item())
 
       classification = categories[bb['category']]
 
@@ -109,29 +115,33 @@ def sign_pose(detections):
 
 
 # Function that runns the detector
-def detector(detect_image):
-   with torch.no_grad():
-      out = detector(detect_image).cpu()
-      bbs = detector.decode_output(out, 0.5)
-   return bbs
+#def detector(detect_image):
+#   with torch.no_grad():
+#      out = model(detect_image)
+#      bbs = model.decode_output(out, 0.5)
+#   return bbs
 
 # Init node
 rospy.init_node('detect_node')
 
 # Init publisher
-image_pub = rospy.Publisher("/bbox", Image, queue_size=2)
+image_pub = rospy.Publisher("/bbox", Image, queue_size=10)
 #pose_pub = rospy.Publisher("/sign_pose", Posestamped, queue_size=2)
 
 # Init detector with trained weights and set to evaluation mode
-device = torch.device('cpu')
-model = Detector().to(device)
-detector = detector_baseline.utils.load_model(model, "project_perception/scripts/detector_baseline/det_2022-02-20_19-48-10-524174.pt", device)
+device = torch.device('cuda')
+detector = Detector().to(device)
+#dataloader = utils.load_model(detector, "/home/miguelclemente/dd2419_ws/src/part3/scripts/det_2022-02-20_19-48-10-524174.pt" , device)
+path = dir + "/scripts/det_2022-02-20_19-48-10-524174.pt"
+dataloader = utils.load_model(detector, path, device)
+
 detector.eval()
 bridge = CvBridge()
 
 
 
 def main():
+
 
    image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback)
 
