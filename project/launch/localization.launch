@@ -9,4 +9,5 @@
   <node name="displaymarkers" pkg="project" type="displaymapmarkers.py" args="$(find dd2419_resources)/worlds_json/V.world.json"/>
   <node name="localization" pkg="project" type="localization.py" />
 
+
 </launch>

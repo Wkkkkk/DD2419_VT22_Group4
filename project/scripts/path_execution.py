@@ -51,18 +51,19 @@ def get_yaw(q):
 
 def execute_path():
     running_stamp = path.header.stamp
-    tol_pos = 1e-2
+    tol_pos = 0.1
     tol_rot = 5
     for setpoint in path.poses:
         rate.sleep()
         odom_point = transform2odom(setpoint)
         if odom_point:
-            while not rospy.is_shutdown():
-		#print(degrees(odom_point.yaw - get_yaw(current_pose.pose.orientation)))
-                pub.publish(odom_point)	
-		rate.sleep()
-		if (setpoint.pose.position.x - current_pose.pose.position.x) ** 2 + (setpoint.pose.position.y - current_pose.pose.position.y) ** 2 + (setpoint.pose.position.z - current_pose.pose.position.z) ** 2 < tol_pos:
-		    break
+            while (setpoint.pose.position.x - current_pose.pose.position.x) ** 2 + \
+                  (setpoint.pose.position.y - current_pose.pose.position.y) ** 2 + \
+                  (setpoint.pose.position.z - current_pose.pose.position.z) ** 2 > tol_pos and not rospy.is_shutdown():
+                #print(degrees(odom_point.yaw - get_yaw(current_pose.pose.orientation)))
+                pub.publish(odom_point)
+                rate.sleep()
+
     goal = odom_point
     while running_stamp == path.header.stamp and not rospy.is_shutdown():
         pub.publish(goal)

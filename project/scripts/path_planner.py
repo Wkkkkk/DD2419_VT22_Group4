@@ -8,17 +8,45 @@ import rospy
 from crazyflie_driver.msg import Position
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
+import tf2_ros
+import tf2_geometry_msgs
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 
 def pose_callback(msg):
     global cf_pose
-    cf_pose = msg
+
+    cf_pose = transform2map(msg)
 
 
 def goal_callback(msg):
     global goal_pose
     goal_pose = msg
+
+
+def transform2map(m):
+    timeout = rospy.Duration(0.5)
+    if not tf_buffer.can_transform(m.header.frame_id, 'map', m.header.stamp, timeout):
+        rospy.logwarn_throttle(5.0, 'No transform from %s to map' % m.header.frame_id)
+        return
+
+    goal_map = tf_buffer.transform(m, 'map')
+    goal_map.header.frame_id = 'map'
+    goal_map.header.stamp = m.header.stamp
+
+    return goal_map
+    # goal = PoseStamped()
+    # goal.header.stamp = m.header.stamp
+    # goal.x = goal_map.pose.position.x
+    # goal.y = goal_map.pose.position.y
+    # goal.z = goal_map.pose.position.z
+    # goal.header.frame_id = 'map'
+    # roll, pitch, yaw = euler_from_quaternion((goal_map.pose.orientation.x,
+    #                                           goal_map.pose.orientation.y,
+    #                                           goal_map.pose.orientation.z,
+    #                                           goal_map.pose.orientation.w))
+    # goal.yaw = degrees(yaw)
+    # return goal
 
 
 class Node:
@@ -113,13 +141,13 @@ class Planning:
                         node.parent = q
                     else:
                         break
-		    q = q.parent
+                    q = q.parent
                 p = node.parent
                 p.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
                 setpoint = pose_stamped(p)
                 setpoints.append(setpoint)
                 node = p
-	    setpoints.reverse()
+            setpoints.reverse()
             return setpoints
         else:
             return None
@@ -151,17 +179,17 @@ class GridMap:
 
     def create_map(self, obstacles):
         map = np.empty((self.dim[0]+1, self.dim[1]+1), dtype=object)
-	
-	cells_to_add = int(round(self.radius/self.resolution))
+
+        cells_to_add = int(round(self.radius/self.resolution))
 
         for obs in obstacles:
             v1 = np.array(obs["plane"]["start"][0:-1])
             v2 = np.array(obs["plane"]["stop"][0:-1])
 
-	    sign1 = np.ones(2)
+            sign1 = np.ones(2)
             sign2 = np.ones(2)
 
-	    if v1[0] > v2[0]:
+            if v1[0] > v2[0]:
                 sign2[0] = -1
             else:
                 sign1[0] = -1
@@ -170,24 +198,24 @@ class GridMap:
             else:
                 sign1[1] = -1
 
-	    if v1[0]+self.radius > self.bounds[1][0] or v1[0]-self.radius < self.bounds[0][0]:
-		sign1[0] = 0
-	    if v1[1]+self.radius > self.bounds[1][1] or v1[1]-self.radius < self.bounds[0][1]:
-		sign1[1] = 0
-	    if v2[0]+self.radius > self.bounds[1][0] or v2[0]-self.radius < self.bounds[0][0]:
-		sign2[0] = 0
-	    if v2[1]+self.radius > self.bounds[1][1] or v2[1]-self.radius < self.bounds[0][1]:
-		sign2[1] = 0
+            if v1[0]+self.radius > self.bounds[1][0] or v1[0]-self.radius < self.bounds[0][0]:
+                sign1[0] = 0
+            if v1[1]+self.radius > self.bounds[1][1] or v1[1]-self.radius < self.bounds[0][1]:
+                sign1[1] = 0
+            if v2[0]+self.radius > self.bounds[1][0] or v2[0]-self.radius < self.bounds[0][0]:
+                sign2[0] = 0
+            if v2[1]+self.radius > self.bounds[1][1] or v2[1]-self.radius < self.bounds[0][1]:
+                sign2[1] = 0
 
-	    index1 = self.convert_to_index(v1+self.radius*sign1)
+            index1 = self.convert_to_index(v1+self.radius*sign1)
             index2 = self.convert_to_index(v2+self.radius*sign2)
-	    occupied_cells = self.raytrace(index1, index2, True)
-	    
-	    for cell in occupied_cells:
-		for x in range(cell[0]-cells_to_add,cell[0]+cells_to_add+1):
-		    for y in range(cell[1]-cells_to_add,cell[1]+cells_to_add+1):
-			if self.dim[0] >= x >= 0 and self.dim[1] >= y >= 0:
-            		   map[x][y] = self.occupied_space
+            occupied_cells = self.raytrace(index1, index2, True)
+
+            for cell in occupied_cells:
+                for x in range(cell[0]-cells_to_add,cell[0]+cells_to_add+1):
+                    for y in range(cell[1]-cells_to_add,cell[1]+cells_to_add+1):
+                        if self.dim[0] >= x >= 0 and self.dim[1] >= y >= 0:
+                            map[x][y] = self.occupied_space
 
 
         for x in range(0, self.dim[0]+1):
@@ -311,13 +339,13 @@ def initialize_planning(world):
     goal_yaw = get_yaw(goal_pose.pose.orientation)
     goal_pos = np.array([goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z])
     tol = 1e-1
-    
+
     if root_pos[2] < tol:
         start_pos[2] = goal_pos[2]
 
-    radius = 0.2
+    radius = 0.1
 
-    resolution = (bounds[1][0] - bounds[0][0])/40
+    resolution = (bounds[1][0] - bounds[0][0])/20
 
     grid = GridMap(bounds, radius, resolution, walls)
 
@@ -348,9 +376,9 @@ def main(argv=sys.argv):
     with open(args[1], 'rb') as f:
         world = json.load(f)
 
-    while not rospy.is_shutdown():
-    	initialize_planning(world)
-    
+    #while not rospy.is_shutdown():
+    initialize_planning(world)
+
 
 if __name__ == "__main__":
     rospy.init_node('path_planner')
@@ -359,6 +387,10 @@ if __name__ == "__main__":
     rospy.Subscriber('/planner/new_goal', PoseStamped, goal_callback)
 
     pub = rospy.Publisher('/planner/path', Path, queue_size=2)
+
+    tf_buffer = tf2_ros.Buffer()
+
+    listener = tf2_ros.TransformListener(tf_buffer)
 
     cf_pose = None
     goal_pose = None

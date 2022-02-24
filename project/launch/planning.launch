@@ -2,9 +2,9 @@
  
 <arg name="world_name" default="erik"/>
 
-<node name="path_planner" pkg="ms2" type="path_planner" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
+<node name="path_planner" pkg="project" type="path_planner.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
 
-<node name="path_execution" pkg="ms2" type="path_execution" output="screen" />
+<node name="path_execution" pkg="project" type="path_execution.py" output="screen" />
 
 
 </launch>
