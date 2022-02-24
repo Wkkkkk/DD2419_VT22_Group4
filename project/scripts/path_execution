@@ -3,7 +3,8 @@
 import rospy
 import tf2_ros
 import tf2_geometry_msgs
-import math
+from math import *
+import numpy as np
 
 from crazyflie_driver.msg import Position
 from geometry_msgs.msg import PoseStamped
@@ -39,20 +40,29 @@ def transform2odom(m):
                                               goal_odom.pose.orientation.y,
                                               goal_odom.pose.orientation.z,
                                               goal_odom.pose.orientation.w))
-    goal.yaw = math.degrees(yaw)
+    goal.yaw = degrees(yaw)
     return goal
+
+
+def get_yaw(q):
+    return atan2(2 * (q.w * q.z + q.x * q.y),
+                 1 - 2 * (q.y * q.y + q.z * q.z))
 
 
 def execute_path():
     running_stamp = path.header.stamp
-    tol = 1e-2
+    tol_pos = 1e-2
+    tol_rot = 5
     for setpoint in path.poses:
         rate.sleep()
         odom_point = transform2odom(setpoint)
         if odom_point:
-            while (odom_point.x - current_pose.pose.position.x) ** 2 + (
-                    odom_point.y - current_pose.pose.position.y) ** 2 > tol and not rospy.is_shutdown():
-                pub.publish(odom_point)
+            while not rospy.is_shutdown():
+		#print(degrees(odom_point.yaw - get_yaw(current_pose.pose.orientation)))
+                pub.publish(odom_point)	
+		rate.sleep()
+		if (setpoint.pose.position.x - current_pose.pose.position.x) ** 2 + (setpoint.pose.position.y - current_pose.pose.position.y) ** 2 + (setpoint.pose.position.z - current_pose.pose.position.z) ** 2 < tol_pos:
+		    break
     goal = odom_point
     while running_stamp == path.header.stamp and not rospy.is_shutdown():
         pub.publish(goal)
