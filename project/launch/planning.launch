@@ -1,0 +1,10 @@
+<launch>
+ 
+<arg name="world_name" default="erik"/>
+
+<node name="path_planner" pkg="ms2" type="path_planner" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
+
+<node name="path_execution" pkg="ms2" type="path_execution" output="screen" />
+
+
+</launch>
