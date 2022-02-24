@@ -19,14 +19,9 @@ def marker_callback(marker_message):
         t.header = marker.header
         t.header.frame_id = 'cf1/camera_link'
         t.child_frame_id = '/aruco/detected{}'.format(marker.id)
-        t.transform.translation.x = marker.pose.pose.position.x
-        t.transform.translation.y = marker.pose.pose.position.y
-        t.transform.translation.z = marker.pose.pose.position.z
-
-        t.transform.rotation.x = marker.pose.pose.orientation.x
-        t.transform.rotation.y = marker.pose.pose.orientation.y
-        t.transform.rotation.z = marker.pose.pose.orientation.z
-        t.transform.rotation.w = marker.pose.pose.orientation.w
+        t.transform.translation = marker.pose.pose.position
+        t.transform.rotation = marker.pose.pose.orientation
+	print(marker)
 
         broadcaster.sendTransform(t)
 

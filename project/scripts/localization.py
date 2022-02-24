@@ -6,6 +6,7 @@ import tf2_ros
 import tf2_geometry_msgs
 import numpy as np
 from tf.transformations import quaternion_from_matrix, quaternion_matrix
+from std_msgs.msg import Bool
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from aruco_msgs.msg import MarkerArray
 
@@ -56,10 +57,11 @@ class Localization(object):
         self.transform.header.frame_id = 'map'
         self.transform.child_frame_id  = 'cf1/odom'
         self.transform.transform.rotation.w = 1
-
+        self.is_initialized = False
 
     def marker_callback(self, msg):
         markers = msg.markers
+        self.is_initialized = True
 
         for marker in markers:
             marker_id = marker.id
@@ -83,7 +85,7 @@ class Localization(object):
             # Calculate transform
             T = np.dot(M, O_inv)
             transform = transform_from_hcmatrix(T, 'map', 'cf1/odom')
-            print(transform)
+            #print(transform)
             self.transform = transform
 
 
@@ -91,11 +93,14 @@ def main():
     rospy.init_node('localization')
     localization = Localization()
     aruco_subscriber = rospy.Subscriber('/aruco/markers', MarkerArray, localization.marker_callback)
+    initialization_publisher = rospy.Publisher('is_initialized', Bool, queue_size=1)
 
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         localization.transform.header.stamp = rospy.Time.now()
         localization.broadcaster.sendTransform(localization.transform)
+
+        initialization_publisher.publish(localization.is_initialized)
         rate.sleep()
 
 
