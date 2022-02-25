@@ -45,21 +45,23 @@ def transform2odom(m):
 
 
 def get_yaw(q):
-    return atan2(2 * (q.w * q.z + q.x * q.y),
-                 1 - 2 * (q.y * q.y + q.z * q.z))
+    return degrees(atan2(2 * (q.w * q.z + q.x * q.y),
+                 1 - 2 * (q.y * q.y + q.z * q.z)))
 
 
 def execute_path():
     running_stamp = path.header.stamp
-    tol = 0.1
+    tol_pos = 0.1
+    tol_rot = 5
     for setpoint in path.poses:
         rate.sleep()
         odom_point = transform2odom(setpoint)
+	print(setpoint)
         if odom_point:
             while not rospy.is_shutdown():
-                if (odom_point.x - current_pose.pose.position.x) ** 2 + \
-                (odom_point.y - current_pose.pose.position.y) ** 2 < tol and \
-                    abs(odom_point.yaw-get_yaw(current_pose.pose.orientation)) < tol:
+		pos_diff = (odom_point.x - current_pose.pose.position.x) ** 2 + (odom_point.y - current_pose.pose.position.y) ** 2
+		rot_diff = abs(odom_point.yaw-get_yaw(current_pose.pose.orientation))
+                if pos_diff < tol_pos and rot_diff < tol_rot:
                     break
                 pub.publish(odom_point)
                 rate.sleep()
