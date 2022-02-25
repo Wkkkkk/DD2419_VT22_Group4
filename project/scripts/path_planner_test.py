@@ -135,6 +135,7 @@ class Planning:
             closed_set.add(node)
 
             if node is self.goal:
+		rospy.loginfo("Found the goal!")
                 goal_found = True
                 break
 
@@ -345,7 +346,7 @@ def initialize_planning(world):
 
     radius = 0.1
 
-    resolution = (bounds[1][0] - bounds[0][0])/20
+    resolution = (bounds[1][0] - bounds[0][0])/40
 
     grid = GridMap(bounds, radius, resolution, walls)
 
