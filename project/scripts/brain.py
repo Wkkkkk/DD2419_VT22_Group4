@@ -74,7 +74,7 @@ def localized_callback(msg):
     localized = msg.data
 
 # Transforms and publishes the goal cmd to cf1/cmd_position
-def publish_cmd(goal):
+def transform_goal(goal):
     global cmd
     # Need to tell TF that the goal was just generated
     goal.header.stamp = rospy.Time(0)
@@ -100,6 +100,8 @@ def publish_cmd(goal):
                                               goal_odom.pose.orientation.z,
                                               goal_odom.pose.orientation.w))
     cmd.yaw = math.degrees(yaw)
+
+    return cmd
     pub_cmd.publish(cmd)
 
 # Initiate node
@@ -159,9 +161,10 @@ def main():
 
                 while not check_distance(current_position, goal_position, tol):
 
-                    publish_cmd(goal_msg)
+                    transformed_goal =transform_goal(goal_msg)
+                    pub_cmd.publish(transformed_goal)
 
-                Hover(goal_msg)
+                Hover(transformed_goal)
 
                 goal_nr += 1
 
