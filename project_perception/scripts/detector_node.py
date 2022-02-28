@@ -59,7 +59,7 @@ def callback(Image):
       bbs = detector.decode_output(out, 0.5)
 
       # Uncomment this part to test if it publishes the tranform for detected sign
-      """publish_detection(bbs)"""
+      publish_detection(bbs)
 
       bounding_box(bbs, cv_image)
    # This will eventually post the pose, static for now
