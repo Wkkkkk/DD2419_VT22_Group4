@@ -15,7 +15,6 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 def pose_callback(msg):
     global cf_pose
-
     cf_pose = transform2map(msg)
 
 
@@ -83,21 +82,42 @@ class Planning:
         else:
             node.cost2come = node.parent.cost2come + np.linalg.norm(node.position-node.parent.position)
 
-        #H_path = self.grid.raytrace(node.index, self.goal.index, True)
-
-        """prev_cell = node.position
+        """H_path = self.grid.raytrace(node.index, self.goal.index, True)
+        prev_cell = node.position
         for cell in H_path[1:]:
             pos2D = self.grid.index_to_world(cell)
             cell_pos = np.array([pos2D[0], pos2D[1], self.start.position[2]])
             node.cost2go += np.linalg.norm(prev_cell-cell_pos)
             prev_cell = cell_pos"""
 
-	node.cost2go = np.linalg.norm(node.position-self.goal.position)
-
+        node.cost2go = np.linalg.norm(node.position-self.goal.position)
         node.cost = node.cost2go + node.cost2come
 
+    def get_setpoints(self):
+        tol = 0.1
+        setpoints = []
+        goal = pose_stamped(self.goal.position, self.goal.yaw)
+        setpoints.append(goal)
+        node = self.goal
+        while node is not self.start:
+            q = node.parent
+            while q.parent is not None:
+                if not self.grid.raytrace(node.index, q.index, False):
+                    node.parent = q
+                else:
+                    break
+                q = q.parent
+            p = node.parent
+            p.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
+            if abs(p.yaw - node.yaw) > tol:
+                setpoints.append(pose_stamped(node.position, p.yaw))
+            setpoints.append(pose_stamped(p.position, p.yaw))
+            node = p
+        setpoints.reverse()
+        return setpoints
+
     def run(self):
-        rospy.loginfo("Path planner is running!");
+        rospy.loginfo("Path planner is running!")
         goal_found = False
         open_set = []
         closed_set = set()
@@ -115,6 +135,7 @@ class Planning:
             closed_set.add(node)
 
             if node is self.goal:
+		rospy.loginfo("Found the goal!")
                 goal_found = True
                 break
 
@@ -130,25 +151,7 @@ class Planning:
                     if neighbour not in open_set:
                         open_set.append(neighbour)
         if goal_found:
-            setpoints = []
-            goal = pose_stamped(self.goal)
-            setpoints.append(goal)
-            node = self.goal
-            while node is not self.start:
-                q = node.parent
-                while q.parent is not None:
-                    if not self.grid.raytrace(node.index, q.index, False):
-                        node.parent = q
-                    else:
-                        break
-                    q = q.parent
-                p = node.parent
-                p.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
-                setpoint = pose_stamped(p)
-                setpoints.append(setpoint)
-                node = p
-            setpoints.reverse()
-            return setpoints
+            return self.get_setpoints()
         else:
             return None
 
@@ -217,14 +220,12 @@ class GridMap:
                         if self.dim[0] >= x >= 0 and self.dim[1] >= y >= 0:
                             map[x][y] = self.occupied_space
 
-
         for x in range(0, self.dim[0]+1):
             for y in range(0, self.dim[1]+1):
                 if map[x][y] != self.occupied_space:
                     index = np.array([x, y])
                     pos2D = self.index_to_world(index)
                     map[x][y] = Node(index, None, np.array([pos2D[0], pos2D[1], start_pos[2]]))
-
         return map
 
     def occupied_cell(self, index):
@@ -292,13 +293,13 @@ def yaw2quaternion(yaw):
     return quaternion_from_euler(0.0, 0.0, yaw)
 
 
-def pose_stamped(node):
+def pose_stamped(position, yaw):
     msg = PoseStamped()
     msg.header.stamp = rospy.Time.now()
-    msg.pose.position.x = node.position[0]
-    msg.pose.position.y = node.position[1]
-    msg.pose.position.z = node.position[2]
-    q = yaw2quaternion(node.yaw)
+    msg.pose.position.x = position[0]
+    msg.pose.position.y = position[1]
+    msg.pose.position.z = position[2]
+    q = yaw2quaternion(yaw)
     msg.pose.orientation.x = q[0]
     msg.pose.orientation.y = q[1]
     msg.pose.orientation.z = q[2]
@@ -345,7 +346,7 @@ def initialize_planning(world):
 
     radius = 0.1
 
-    resolution = (bounds[1][0] - bounds[0][0])/20
+    resolution = (bounds[1][0] - bounds[0][0])/40
 
     grid = GridMap(bounds, radius, resolution, walls)
 
