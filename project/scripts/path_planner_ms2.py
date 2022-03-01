@@ -54,7 +54,6 @@ class Node:
         self.position = position
         self.yaw = yaw
         self.parent = parent
-        self.children = []
         self.cost2go = 0
         self.cost2come = 0
         self.cost = 0
