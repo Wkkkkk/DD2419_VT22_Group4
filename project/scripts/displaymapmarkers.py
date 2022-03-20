@@ -9,10 +9,10 @@ from tf.transformations import quaternion_from_euler
 from geometry_msgs.msg import TransformStamped, Vector3
 
 
-def transform_from_marker(m):
+def transform_from_marker(m, id):
     t = TransformStamped()
     t.header.frame_id = 'map'
-    t.child_frame_id = 'aruco/marker' + str(m['id'])
+    t.child_frame_id = 'aruco/marker' + str(id)
     t.transform.translation = Vector3(*m['pose']['position'])
     roll, pitch, yaw = m['pose']['orientation']
     (t.transform.rotation.x,
@@ -33,7 +33,7 @@ def main(argv=sys.argv):
         world = json.load(f)
 
     # Create a transform for each marker
-    transforms = [transform_from_marker(m) for m in world['markers']]
+    transforms = [transform_from_marker(m, index) for index, m in enumerate(world['markers'])]
 
     # Publish these transforms statically forever
     rospy.init_node('displaymarkers')
