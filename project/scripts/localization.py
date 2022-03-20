@@ -12,6 +12,11 @@ from aruco_msgs.msg import MarkerArray
 
 
 def hcmatrix_from_transform(t):
+    """Convert a C{geometry_msgs/TransformStamped} into 4*4 np arrays
+ 
+    @param t: ROS message to be converted
+    @return: transition matrix
+    """
     quats = [0, 0, 0, 0]
     quats[0] = t.transform.rotation.x
     quats[1] = t.transform.rotation.y
@@ -28,6 +33,11 @@ def hcmatrix_from_transform(t):
 
 
 def transform_from_hcmatrix(hcm,header_frame,child_frame):
+    """Convert a  4*4 np array into a C{geometry_msgs/TransformStamped} message
+ 
+    @param hcm:  transition matrix
+    @return: ROS message
+    """
     quats = quaternion_from_matrix(hcm)
 
     t = TransformStamped()
@@ -76,17 +86,22 @@ class KalmanFilter:
     def __init__(self):
         self.is_initialized = False
 
-        # Motion model
-        self.A = np.eye(3)     # State transition matrix
-        self.R = np.eye(3)     # Motion noise matrix
+        # initial state (location and velocity)
+        self.mu = np.zeros((6, 1))  # [x, y, theta, x', y', theta']
 
-        # Measurement model
-        self.C = np.ones(3)    # Observation matrix. #array([[1,1,1]])
-        self.Q = np.eye(3)*0.1 # Observation noise matrix
-
-        self.mu = None
-        self.sigma = None
-        self.z = None
+        # initial uncertainty: 0 for positions x and y, 1000 for the two velocities
+        self.P = np.zeros((6,6))
+        self.P[3, 3] = self.P[4, 4] = self.P[5, 5] = 1000
+        # state transition matrix: generalize the 2d version to 4d
+        self.F = np.eye(6)
+        self.F[0,3] = self.F[1,4] = self.F[2,5] = 0.5
+        # measurement matrix: reflect the fact that we observe x and y but not the two velocities
+        self.H = np.zeros((3, 6))
+        self.H[0, 0] = self.H[1, 1] = self.H[2, 2] = 1
+        # measurement uncertainty: use 2x2 matrix with 0.1 as main diagonal
+        self.R = np.eye(3) * 100
+        self.Q = np.eye(6) * 0.01
+        self.I = np.eye(6)
 
 
     def update(self, msg):
@@ -94,55 +109,44 @@ class KalmanFilter:
         roll, pitch, yaw = euler_from_quaternion(q)
 
         # Measurement
-        self.z = np.array([p[0], p[1], yaw])  # x, y, yaw
+        x_measured = p[0]
+        y_measured = p[1]
+        Z = np.array([[x_measured], [y_measured], [yaw]])
+        Z[2] = (Z[2] + np.pi) % (2 * np.pi) - np.pi
 
         if not self.is_initialized:
-            self.mu = self.z
-            self.sigma = np.eye(3)
+            self.mu[0] = x_measured
+            self.mu[1] = y_measured
+            self.mu[2] = yaw
             self.is_initialized = True
 
-        # Estimated belief
-        self.mu, self.sigma = self.kf_predict()
+        # Innovation
+        y = Z - np.dot(self.H, self.mu)
+        y[2] = (y[2] + np.pi) % (2 * np.pi) - np.pi
 
-        # Posterior distribution and Kalman Gain
-        self.mu, self.sigma, K = self.kf_update()
+        # Kalman Gain
+        S = np.dot(np.dot(self.H, self.P), np.transpose(self.H)) + self.R
+        K = np.dot(np.dot(self.P, np.transpose(self.H)), np.linalg.inv(S))
+
+        # Posterier mu and sigma
+        self.mu = self.mu + np.dot(K, y)
+        self.P = np.dot((self.I - np.dot(K, self.H)), self.P)
 
         # Output 
         msg.transform.translation.x = self.mu[0]
         msg.transform.translation.y = self.mu[1]
+        msg.transform.translation.z = 0
 
         (msg.transform.rotation.x,
          msg.transform.rotation.y,
          msg.transform.rotation.z,
          msg.transform.rotation.w) = quaternion_from_euler(0, 0, self.mu[2])  # yaw
 
+        # predict
+        self.mu = np.dot(self.F, self.mu)
+        self.P = np.dot(np.dot(self.F, self.P), np.transpose(self.F)) + self.Q
 
         return msg
-
-
-    def kf_update(self):
-        # Kalman Gain
-        K_term = np.dot(self.C.T, np.linalg.inv((np.dot(self.C, np.dot(self.sigma, self.C.T)) + self.Q)))
-        K = np.dot(self.sigma, K_term)
-        # Innovation
-        eta = self.z - np.dot(self.C, self.mu)
-
-        #print(self.z.shape, K.shape, eta.shape)
-        # Compute posterior
-        mu = self.mu + np.dot(K, eta) # Mean of the state
-        I = np.eye(3)
-        sigma = np.dot((I - np.dot(K, self.C)), self.sigma) # Covariance of the state
-
-        return mu, sigma, K
-
-    def kf_predict(self):
-        # Estimated mean of the state (no control)
-        mu = np.dot(self.A, self.mu)
-
-        # Estimated covariance of the state
-        sigma = np.dot(self.A, np.dot(self.sigma, self.A.T)) + self.R
-
-        return mu, sigma
 
 
 class Localization(object):
