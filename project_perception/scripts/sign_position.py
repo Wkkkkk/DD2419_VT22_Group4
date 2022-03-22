@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 
+<<<<<<< HEAD
+from socket import timeout
 from sqlite3 import Timestamp
+from syslog import LOG_INFO
+=======
+from sqlite3 import Timestamp
+>>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 from numpy import broadcast
 import rospy
 from aruco_msgs.msg import MarkerArray
@@ -9,10 +15,17 @@ import tf2_geometry_msgs
 import rospy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
+<<<<<<< HEAD
+from std_msgs.msg import Int32
+#from msg import Detected
+
+categories = {0:"no_bicycle", 1:"airport" , 2: "dangerous_left", 3:"dangerous_right", 4: "follow left",
+=======
 from std_msgs import Int32
 #from msg import Detected
 
 categories = {0:"no bicycle", 1:"airport" , 2: "dangerous left", 3:"dangerous right", 4: "follow left",
+>>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
                5:"follow right", 6:"junction", 7:"no heavy truck", 8:"no parking", 9:"no stopping and parking",
                10:"residential", 11:"narrows from left", 12:"narrows from right", 13:"roundabout", 14:"stop"}
 
@@ -22,6 +35,30 @@ def sign_callback(msg):
     # For the moment we just get the static transform from map to sign and post this as the current pose
     # In the future we will have a estimated pose
 
+<<<<<<< HEAD
+    #time_stamp = msg.header.stamp
+    time_stamp = rospy.Time.now()
+    sign_id = msg.data
+    #print(categories[sign_id])
+
+    if tf_buf.can_transform('map', ('world/roadsign' + categories[sign_id]), time_stamp, timeout= rospy.Duration(0.2)):
+        trans = tf_buf.lookup_transform(  'map',('world/roadsign' + categories[sign_id]), time_stamp, timeout=rospy.Duration(0.2))
+        #print(categories[sign_id])
+    else:
+        return
+    sign_pose_transform = TransformStamped()
+    print(trans)
+    sign_pose_transform.header.stamp = time_stamp
+    sign_pose_transform.header.frame_id = 'map'
+    sign_pose_transform.child_frame_id = 'detector/detectedsign_' + categories[sign_id]
+    sign_pose_transform.transform.translation = trans.transform.translation
+
+    sign_pose_transform.transform.rotation = trans.transform.rotation
+
+
+    print("broadcasting: " + categories[sign_id])
+    broadcaster.sendTransform(sign_pose_transform)
+=======
     time_stamp = msg.header.stamp
     sign_id = msg.data
 
@@ -36,6 +73,7 @@ def sign_callback(msg):
     sign_pose_transform.transform.rotation = trans.pose.orientation
 
     broadcaster.sendTransform(trans)
+>>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 
 def transform_to_map(sign_in_camera):
 
@@ -69,7 +107,7 @@ def create_transform(sign_in_map, sign_id):
 
     return transform_sign_map
 
-rospy.init_node('detected_sign_transform')
+rospy.init_node('sign_position')
 
 tf_buf   = tf2_ros.Buffer()
 tf_lstn  = tf2_ros.TransformListener(tf_buf)

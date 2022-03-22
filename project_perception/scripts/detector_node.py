@@ -1,19 +1,27 @@
 #!/usr/bin/env python
 
 # An initial attempt for the detection node, I think it's better to convert it to a class (like in flight camp).
+from ast import Global
 import string
 from PIL import Image
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 from PIL import Image as Img
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CameraInfo
 import rospy
 from geometry_msgs.msg import PoseStamped
 import utils
 import torch
+<<<<<<< HEAD
+from std_msgs.msg import Int32
+from detector import Detector
+import os
+import numpy as np
+=======
 from std_msgs import Int32
 #from detector import Detector
 import os
+>>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 # from msg import Detected
 
 dir = os.path.abspath(os.getcwd())
@@ -28,7 +36,11 @@ categories = {0:"no bicycle", 1:"airport" , 2: "dangerous left", 3:"dangerous ri
 def callback(Image):
    global bridge
 
+<<<<<<< HEAD
+   timestamp = Image.header.stamp
+=======
    time_stamp = Image.header.stamp
+>>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 
    # convert ros image to cv2
    try:
@@ -41,6 +53,13 @@ def callback(Image):
 
    # convert to pillow image
    PIL_image  = Img.fromarray(RGB_image)
+
+   #REMOVE DISTORTION! WIP
+   h,w = PIL_image.shape[:2]
+   new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, distortion_parameters, (w,h), 1, (w,h))
+   dst = cv2.undistort(PIL_image, camera_matrix, distortion_parameters, None, new_camera_matrix)
+   x, y, w, h = roi
+   dst = dst[y:y+h, x:x+w] 
 
    # What follows here is just some weird structuring of the data I had to do for it to fit into the demands of the model, not sure why.
    # But the list detect_images is what is passed to the model.
@@ -59,7 +78,11 @@ def callback(Image):
       bbs = detector.decode_output(out, 0.5)
 
       # Uncomment this part to test if it publishes the tranform for detected sign
+<<<<<<< HEAD
+      publish_detection(bbs, timestamp)
+=======
       publish_detection(bbs)
+>>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 
       bounding_box(bbs, cv_image)
    # This will eventually post the pose, static for now
@@ -164,14 +187,20 @@ detector.eval()
 bridge = CvBridge()
 
 
+def caminfo(caminfo_msg):
+   global camera_matrix,distortion_parameters
+
+   camera_matrix = caminfo_msg.K
+   distortion_parameters = caminfo_msg.D
 
 def main():
 
 
    image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback)
-
    rospy.spin()
 
 
 if __name__ == '__main__':
-    main()
+   caminfo_sub = rospy.Subscriber("/cf1/camera/camera_info", CameraInfo, caminfo)
+
+   main()
