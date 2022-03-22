@@ -12,16 +12,10 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 import utils
 import torch
-<<<<<<< HEAD
 from std_msgs.msg import Int32
 from detector import Detector
 import os
 import numpy as np
-=======
-from std_msgs import Int32
-#from detector import Detector
-import os
->>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 # from msg import Detected
 
 dir = os.path.abspath(os.getcwd())
@@ -36,11 +30,7 @@ categories = {0:"no bicycle", 1:"airport" , 2: "dangerous left", 3:"dangerous ri
 def callback(Image):
    global bridge
 
-<<<<<<< HEAD
    timestamp = Image.header.stamp
-=======
-   time_stamp = Image.header.stamp
->>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 
    # convert ros image to cv2
    try:
@@ -78,11 +68,7 @@ def callback(Image):
       bbs = detector.decode_output(out, 0.5)
 
       # Uncomment this part to test if it publishes the tranform for detected sign
-<<<<<<< HEAD
       publish_detection(bbs, timestamp)
-=======
-      publish_detection(bbs)
->>>>>>> 31c83e87f7356d6990a4f5836bf7eff5002a59ae
 
       bounding_box(bbs, cv_image)
    # This will eventually post the pose, static for now
