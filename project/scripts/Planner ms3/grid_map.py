@@ -14,7 +14,7 @@ class GridMap:
         Y = int((self.bounds[1][1] - self.bounds[0][1]) / self.resolution) + 1
         self.dim = [X - 1, Y - 1]
 
-        self.map = self.create_map(world['walls'])
+        self.map, self.explore_map = self.create_map(world['walls'])
 
     def __getitem__(self, index):
         x, y = index
@@ -30,8 +30,9 @@ class GridMap:
 
     def create_map(self, walls):
         map = np.empty((self.dim[0]+1, self.dim[1]+1), dtype=object)
+        explore_map = np.ones((self.dim[0] + 1, self.dim[1] + 1), dtype=object)
 
-        cells_to_add = int(round(self.radius/self.resolution))
+        padding = int(round(self.radius/self.resolution))
 
         for wall in walls:
             v1 = np.array(wall["plane"]["start"][0:-1])
@@ -63,10 +64,18 @@ class GridMap:
             occupied_cells = self.raytrace(index1, index2, True)
 
             for cell in occupied_cells:
-                for x in range(cell[0]-cells_to_add,cell[0]+cells_to_add+1):
-                    for y in range(cell[1]-cells_to_add,cell[1]+cells_to_add+1):
+                x_min = cell[0]-padding
+                x_max = cell[0]+padding
+                y_min = cell[1]-padding
+                y_max = cell[1]+padding
+                for x in range(x_min, x_max+1):
+                    for y in range(y_min, y_max+1):
                         if self.dim[0] >= x >= 0 and self.dim[1] >= y >= 0:
                             map[x][y] = self.occupied_space
+                            if (x == x_min or x == x_max or y == y_min or y == y_max) and explore_map[x][y] != 0:
+                                explore_map[x][y] = 3
+                            else:
+                                explore_map[x][y] = 0
 
         for x in range(0, self.dim[0]+1):
             for y in range(0, self.dim[1]+1):
@@ -74,7 +83,7 @@ class GridMap:
                     index = np.array([x, y])
                     pos2D = self.index_to_world(index)
                     map[x][y] = Node(index, None, np.array([pos2D[0], pos2D[1], 0.0]))
-        return map
+        return map, explore_map
 
     def occupied_cell(self, index):
         if self.map[index[0]][index[1]] == self.occupied_space:
@@ -130,3 +139,6 @@ class GridMap:
 
     def index_to_world(self, index):
         return self.bounds[0][0:2] + self.resolution*index + np.ones(2)*self.resolution/2
+
+    def reset_exploration_map(self):
+        return self.explore_map.copy()
