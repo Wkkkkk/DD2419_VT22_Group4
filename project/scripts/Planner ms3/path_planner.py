@@ -142,7 +142,9 @@ class Planner:
 
         if goal_found:
             rospy.loginfo("Successfully found a trajectory!")
-            return self.get_setpoints()
+            setpoints = self.get_setpoints()
+            path_publisher(setpoints)
+            return setpoints
         else:
             rospy.loginfo("Could not find a trajectory!")
             return None
