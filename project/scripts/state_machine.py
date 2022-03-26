@@ -11,7 +11,7 @@ from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PoseStamped
 from crazyflie_driver.msg import Position
 import timeit
-from std_msgs.msg import Bool
+from std_msgs.msg import Empty
 import enum
 
 from action import Crazyflie
@@ -34,7 +34,6 @@ class StateMachine(object):
         
         # Subscribe to topics
         sub_pose = rospy.Subscriber('cf1/pose', PoseStamped, self.pose_callback)
-        sub_localize = rospy.Subscriber('is_initialized', Bool, self.localized_callback)
 
         # Wait for service providers
         #rospy.wait_for_service(self.rotate_srv_nm, timeout=3)
@@ -51,7 +50,9 @@ class StateMachine(object):
         self.state = State.Init
         self.cf = Crazyflie("cf1")
 
-        rospy.sleep(3)
+        # Wait to be initialized
+        rospy.wait_for_message('is_initialized', Empty)
+
         self.states()
 
 
