@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import rospy
+import sys
+import json
 import math
 import numpy as np
 import rospy
@@ -11,94 +13,110 @@ from tf.transformations import euler_from_quaternion
 from geometry_msgs.msg import PoseStamped
 from crazyflie_driver.msg import Position
 import timeit
-from std_msgs.msg import Bool
-import enum
+from std_msgs.msg import Bool, String
+from grid_map import GridMap
+from path_planner import Planner
+from explore import Explore
 
-from action import Crazyflie
+
+def pose_callback(msg):
+    global current_pose
+    current_pose = msg
 
 
-# Using enum class create enumerations
-class State(enum.Enum):
-   Init = 1
-   GenerateExplorationGoal = 2
-   GoToExplorationGoal = 3
-   RotateAndSearchForIntruder = 4
-   Landing = 5
+def localized_callback(msg):
+    global localized
+    localized = msg.data
+
+
+def reached_goal_callback(msg):
+    global reached_goal
+    reached_goal = msg.data
 
 
 class StateMachine(object):
+    def __init__(self, argv=sys.argv):
+        args = rospy.myargv(argv=argv)
+        with open(args[1], 'rb') as f:
+            world = json.load(f)
 
-    def __init__(self):
-        #self.rotate_srv_nm = rospy.get_param(rospy.get_name() + '/rotate_srv')
-        #self.hover_srv_nm = rospy.get_param(rospy.get_name() + '/hover_srv')
-        
+        self.grid = GridMap(0.2, world)
+        self.explore = Explore(self.grid)
+
         # Subscribe to topics
-        sub_pose = rospy.Subscriber('cf1/pose', PoseStamped, self.pose_callback)
-        sub_localize = rospy.Subscriber('is_initialized', Bool, self.localized_callback)
-
-        # Wait for service providers
-        #rospy.wait_for_service(self.rotate_srv_nm, timeout=3)
-        #rospy.wait_for_service(self.hover_srv_nm)
+        sub_pose = rospy.Subscriber('/cf1/pose', PoseStamped, pose_callback)
+        sub_localize = rospy.Subscriber('/is_initialized', Bool, localized_callback)
+        sub_path_executed = rospy.Subscriber('/reached_goal', Bool, localized_callback)
 
         # Instantiate publishers
         self.pub_cmd = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
+        self.pub_motion = rospy.Publisher('/motion', String, queue_size=2)
 
         # Init state machine
-        goal = None
-        current_pose = None
-        cmd = 0
-        localized = False
-        self.state = State.Init
-        self.cf = Crazyflie("cf1")
-
+        self.goal = None
+        self.current_pose = None
+        self.localized = False
+        self.state = 0
         rospy.sleep(3)
         self.states()
 
-
     def states(self):
-
+        next_pose = None
         # State 0: lift off and hover
-        if self.state == State.Init:
-            self.cf.takeOff(0.4)
-            self.state = State.GenerateExplorationGoal
+        if self.state == 0:
+            self.publish_motion("liftoff")
+            self.state = 1
+            rospy.sleep(1)
 
-        while not rospy.is_shutdown():
+        while not rospy.is_shutdown() and self.state != 4:
+
             # State 1: Generate next exploration goal from explorer
-            if self.state == State.GenerateExplorationGoal:
-                print("Generate goal")
-                rospy.sleep(1)
-                self.state = State.GoToExplorationGoal
+            if self.state == 1:
+                next_pose = self.explore.next_point()
+                if next_pose is None:
+                    self.state = 4
+                else:
+                    self.state = 2
 
             # State 2: Generate path to next exploration goal and execute it
-            if self.state == State.GoToExplorationGoal:
-                self.cf.goTo(0.4, 0.1, 0.2, 0)
-                self.state = State.RotateAndSearchForIntruder
+            if self.state == 2:
+                A = Planner(next_pose, self.grid)
+                A.run()
+
+                self.state = 3
+                rospy.sleep(1)
 
             # State 3: Rotate 90 degrees and hover a while three times while waiting for intruder detection
-            if self.state == State.RotateAndSearchForIntruder:
-                for _ in range(3):
-                    self.cf.rotate(10, 5)
-                self.state = State.Landing
+            if self.state == 3:
+                self.publish_motion("rotate")
 
-            # State 4: Land on the ground when explorer can't find more space to explore
-            if self.state == State.Landing:
-                break
+                self.state = 1
+                rospy.sleep(1)
 
-        rospy.loginfo("%s: Tasks finished!")
+        # State 4: Land on the ground when explorer can't find more space to explore
+        if self.state == 4:
+            self.publish_motion("land")
+            rospy.sleep(1)
 
+        # Error handling
+        if self.state == 5:
+            rospy.logerr("%s: State machine failed. Check your code and try again!")
+            return
 
-    def pose_callback(self, msg):
-        self.current_pose = msg
+        rospy.loginfo("%s: State machine finished!")
+        return
 
-    def localized_callback(self, msg):
-        self.localized = msg.data
+    def publish_motion(self, motion):
+        msg = String()
+        msg.data = motion
+        self.pub_motion.publish(msg)
 
 
 if __name__ == '__main__':
     rospy.init_node('state_machine')
     try:
-       StateMachine()
+        StateMachine()
     except rospy.ROSInterruptException:
-       pass
+        pass
 
     rospy.spin()
