@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import rospy
+import sys
+import json
 import math
 import numpy as np
 import rospy
@@ -13,81 +15,86 @@ from crazyflie_driver.msg import Position
 import timeit
 from std_msgs.msg import Empty
 import enum
-
-from action import Crazyflie
-
+from grid_map import GridMap
+from path_planner import Planner
+from explore import Explore
 
 # Using enum class create enumerations
 class State(enum.Enum):
-   Init = 1
-   GenerateExplorationGoal = 2
-   GoToExplorationGoal = 3
-   RotateAndSearchForIntruder = 4
-   Landing = 5
+    Init = 1
+    GenerateExplorationGoal = 2
+    GoToExplorationGoal = 3
+    RotateAndSearchForIntruder = 4
+    Landing = 5
 
 
 class StateMachine(object):
+    def __init__(self, argv=sys.argv):
+        # Initialize map
+        args = rospy.myargv(argv=argv)
+        with open(args[1], 'rb') as f:
+            world = json.load(f)
 
-    def __init__(self):
-        #self.rotate_srv_nm = rospy.get_param(rospy.get_name() + '/rotate_srv')
-        #self.hover_srv_nm = rospy.get_param(rospy.get_name() + '/hover_srv')
-        
+        self.grid = GridMap(0.2, world)
+        self.explore = Explore(self.grid)
+
         # Subscribe to topics
-        sub_pose = rospy.Subscriber('cf1/pose', PoseStamped, self.pose_callback)
-
-        # Wait for service providers
-        #rospy.wait_for_service(self.rotate_srv_nm, timeout=3)
-        #rospy.wait_for_service(self.hover_srv_nm)
+        self.sub_pose = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
 
         # Instantiate publishers
         self.pub_cmd = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
 
-        # Init state machine
+        # Initialize state machine
         self.goal = None
         self.current_pose = None
         self.cmd = 0
         self.state = State.Init
         self.cf = Crazyflie("cf1")
 
-        # Wait to be initialized
-        rospy.wait_for_message('is_initialized', Empty)
-
         self.states()
 
-
     def states(self):
+        next_pose = None
 
-        # State 0: lift off and hover
+        # Wait for localization to be initialized
+        rospy.wait_for_message('is_initialized', Empty)
+
+        # State 1: lift off and hover
         if self.state == State.Init:
             self.cf.takeOff(0.4)
             self.state = State.GenerateExplorationGoal
 
         while not rospy.is_shutdown():
-            # State 1: Generate next exploration goal from explorer
+            # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
-                print("Generate goal")
-                rospy.sleep(1)
-                self.state = State.GoToExplorationGoal
+                next_pose = self.explore.next_point()
 
-            # State 2: Generate path to next exploration goal and execute it
+                if next_pose is None:
+                    self.state = State.Landing
+                else:
+                    self.state = State.GoToExplorationGoal
+
+            # State 3: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
                 print("Go to goal")
-                self.cf.goTo(0.4, 0.1, 0.2, 0)
+                # self.cf.goTo(0.4, 0.1, 0.2, 0)
+                A = Planner(next_pose, self.grid)
+                A.run()
+
                 self.state = State.RotateAndSearchForIntruder
 
-            # State 3: Rotate 90 degrees and hover a while three times while waiting for intruder detection
+            # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
                 print("Check intruders")
-                for _ in range(3):
-                    self.cf.rotate(10, 5)
-                self.state = State.Landing
+                self.cf.rotate(10, 5)
+                self.state = State.GenerateExplorationGoal
 
-            # State 4: Land on the ground when explorer can't find more space to explore
+            # State 5: Land on the ground when explorer can't find more space to explore
             if self.state == State.Landing:
                 print("Finish task")
                 break
 
-        rospy.loginfo("%s: Tasks finished!")
+        rospy.loginfo("%s: State machine finished!")
 
 
     def pose_callback(self, msg):
@@ -97,8 +104,8 @@ class StateMachine(object):
 if __name__ == '__main__':
     rospy.init_node('state_machine')
     try:
-       StateMachine()
+        StateMachine()
     except rospy.ROSInterruptException:
-       pass
+        pass
 
     rospy.spin()
