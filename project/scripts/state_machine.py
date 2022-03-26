@@ -43,10 +43,9 @@ class StateMachine(object):
         self.pub_cmd = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
 
         # Init state machine
-        goal = None
-        current_pose = None
-        cmd = 0
-        localized = False
+        self.goal = None
+        self.current_pose = None
+        self.cmd = 0
         self.state = State.Init
         self.cf = Crazyflie("cf1")
 
@@ -72,17 +71,20 @@ class StateMachine(object):
 
             # State 2: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
+                print("Go to goal")
                 self.cf.goTo(0.4, 0.1, 0.2, 0)
                 self.state = State.RotateAndSearchForIntruder
 
             # State 3: Rotate 90 degrees and hover a while three times while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
+                print("Check intruders")
                 for _ in range(3):
                     self.cf.rotate(10, 5)
                 self.state = State.Landing
 
             # State 4: Land on the ground when explorer can't find more space to explore
             if self.state == State.Landing:
+                print("Finish task")
                 break
 
         rospy.loginfo("%s: Tasks finished!")
@@ -90,9 +92,6 @@ class StateMachine(object):
 
     def pose_callback(self, msg):
         self.current_pose = msg
-
-    def localized_callback(self, msg):
-        self.localized = msg.data
 
 
 if __name__ == '__main__':
