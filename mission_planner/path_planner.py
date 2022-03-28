@@ -25,7 +25,7 @@ class Planner:
         self.grid = grid
 
         self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, pose_callback)
-        self.pub = rospy.Publisher('/planner/path', Path, queue_size=2)
+        self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=2)
 
         self.start, self.goal = self.initialize_planning(goal_pose)
         self.grid[self.start.index] = self.start
