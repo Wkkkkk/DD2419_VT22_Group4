@@ -4,7 +4,7 @@ import rospy
 import tf
 from crazyflie_driver.msg import Hover
 from std_msgs.msg import Empty
-from crazyflie_driver.srv import UpdateParams, Land, TakeOff
+from crazyflie_driver.srv import UpdateParams, Land, TakeOff, GoTo
 
 
 class Crazyflie:
@@ -12,14 +12,13 @@ class Crazyflie:
         self.prefix = prefix
 
         self.rate = rospy.Rate(10)
-        self.duration = 2
+        self.duration = 5
 
-        self.standard_height = 0.4
+        self.height = 0.4
         # Wait for service providers
         rospy.wait_for_service(prefix + '/land')
         rospy.wait_for_service(prefix + '/takeoff')
-        rospy.wait_for_service(prefix + '/update_params')
-        rospy.loginfo("found update_params service")
+        #rospy.wait_for_service(prefix + '/go_to')
 
         self.pub_hover = rospy.Publisher(prefix + "/cmd_hover", Hover, queue_size=1)
         self.hover_msg = Hover()
@@ -30,25 +29,23 @@ class Crazyflie:
         self.rotating = False
 
     # take off to height
-    def takeOff(self, height):
+    def takeOff(self):
         rospy.loginfo("Taking off!")
-        self.duration = 1 + int(10*height/self.standard_height)
         takeoff_client = rospy.ServiceProxy(self.prefix + '/takeoff', TakeOff)
-        takeoff_client(0, height, self.duration)
+        takeoff_client(0, self.height, self.duration)
 
-    def hover(self, height):
+    def hover(self):
         self.hover_msg.vx = 0.0
         self.hover_msg.vy = 0.0
         self.hover_msg.yawrate = 0.0
-        self.hover_msg.zDistance = height
+        self.hover_msg.zDistance = self.height
         self.hover_msg.header.stamp = rospy.Time.now()
         self.pub_hover.publish(self.hover_msg)
-        self.rate.sleep()
 
     # rotate itself
     # yawrate [e.g. -200 to 200 degrees/second]
     # duration [seconds]
-    def rotate (self, yawrate=10, max_duration=5):
+    def rotate(self, yawrate=10, max_duration=5):
         rospy.loginfo("Rotating")
         self.rotating = True
         timer = rospy.Timer(rospy.Duration(max_duration), self.stop_rotate)
@@ -57,7 +54,7 @@ class Crazyflie:
             self.hover_msg.vx = 0.0
             self.hover_msg.vy = 0.0
             self.hover_msg.yawrate = yawrate
-            self.hover.zDistance = self.standard_height
+            self.hover.zDistance = self.height
             self.hover_msg.header.seq += 1
             self.hover_msg.header.stamp = rospy.Time.now()
             self.pub_hover.publish(self.hover_msg)
@@ -74,5 +71,4 @@ class Crazyflie:
         land_client = rospy.ServiceProxy(self.prefix + '/land', Land)
         land_client(0, 0.1, self.duration)
         self.pub_stop.publish(self.stop_msg)
-
 
