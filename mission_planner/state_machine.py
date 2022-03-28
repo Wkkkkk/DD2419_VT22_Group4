@@ -65,7 +65,8 @@ class StateMachine(object):
 
         # State 1: lift off and hover
         if self.state == State.Init:
-            self.cf.takeOff(0.4)
+            self.cf.takeOff()
+            self.cf.hover()
             self.state = State.GenerateExplorationGoal
 
         while not rospy.is_shutdown():
@@ -80,11 +81,12 @@ class StateMachine(object):
 
             # State 3: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
-                rospy.loginfo("Goes to goal")
+                rospy.loginfo("Go to next goal")
                 A = Planner(next_pose, self.grid)
                 A.run()
-                """while not rospy.is_shutdown() and not self.is_executed:
-                    continue"""
+
+                while not self.is_executed:
+                    continue
                 self.state = State.RotateAndSearchForIntruder
 
             # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
