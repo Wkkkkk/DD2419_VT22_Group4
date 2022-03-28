@@ -88,9 +88,6 @@ class Explore:
         else:
             return None
 
-    def rotate(self):
-        return 0
-
     def reset_map(self):
         self.e_map = self.grid.reset_exlporation_map()
 
