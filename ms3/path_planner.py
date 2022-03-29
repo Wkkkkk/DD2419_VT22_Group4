@@ -124,16 +124,16 @@ class Planner:
             rospy.loginfo("Could not find a trajectory!")
             #return None
 
-    def initialize_planning(self, goal_pose):
-        global current_pose
-        current_pose = None
+        return goal_found
 
-        while not current_pose:
+    def initialize_planning(self, goal_pose):
+        while not self.current_pose:
+            # rospy.loginfo("Waiting for current pose to be initialized")
             continue
 
-        root_pose = current_pose
+        root_pose = self.current_pose
 
-        root_yaw = self.tr.quaternion2yawyaw(root_pose.pose.orientation)
+        root_yaw = self.tr.quaternion2yaw(root_pose.pose.orientation)
         root_pos = np.array([root_pose.pose.position.x, root_pose.pose.position.y, root_pose.pose.position.z])
         start_pos = root_pos.copy()
 

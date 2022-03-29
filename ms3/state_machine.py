@@ -17,7 +17,7 @@ from std_msgs.msg import Empty, Bool
 import enum
 from grid_map import GridMap
 from path_planner import Planner
-from explorer import Explore
+from explore import Explore
 from action import Crazyflie
 from transform import Transform
 
@@ -33,6 +33,7 @@ class State(enum.Enum):
 
 class StateMachine(object):
     def __init__(self, argv=sys.argv):
+        rospy.loginfo("Initializing state machine")
         # Initialize map
         args = rospy.myargv(argv=argv)
         with open(args[1], 'rb') as f:
@@ -58,14 +59,15 @@ class StateMachine(object):
         self.state = State.Init
         self.cf = Crazyflie("cf1")
 
+        rospy.loginfo(" state machine initialzed")
         self.states()
-        rospy.sleep(1)
 
     def states(self):
         next_pose = None
 
         # Wait for localization to be initialized
         #rospy.wait_for_message('is_initialized', Empty)
+        rospy.loginfo("state machine ready")
 
         # State 1: lift off and hover
         if self.state == State.Init:
@@ -76,45 +78,50 @@ class StateMachine(object):
             goal_pose.pose.position.y = self.current_pose.pose.position.y
             goal_pose.pose.position.z = height
             self.cf.takeOff(height)
+            rospy.loginfo("taken off")
 
             self.state = State.GenerateExplorationGoal
-            self.reach_goal(goal_pose)
-            self.cf.hover()
-            rospy.sleep(1)
+            #self.reach_goal(goal_pose)
+            #rospy.loginfo("reached goal")
 
         while not rospy.is_shutdown():
+            print("State:", self.state)
+
             # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
+                self.cf.start_hovering()
+                rospy.loginfo("generating exploration")
                 next_pose = self.explore.next_goal(self.current_pose)
 
                 if next_pose is None:
                     self.state = State.Landing
                 else:
                     self.state = State.GoToExplorationGoal
-                rospy.sleep(1)
 
             # State 3: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
-                rospy.loginfo("Go to next goal")
+                rospy.loginfo("Go to next goal %s", next_pose)
                 A = Planner(next_pose, self.grid)
-                A.run()
+                goal_found = A.run()
+                if not goal_found:
+                    self.state = State.Landing
+                    continue
 
+                self.cf.stop_hovering()
                 while not self.is_executed:
                     continue
                 self.state = State.RotateAndSearchForIntruder
-                rospy.sleep(1)
 
             # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
                 rospy.loginfo("Checks for intruders")
                 self.cf.rotate(10, 5)
                 self.state = State.GenerateExplorationGoal
-                rospy.sleep(1)
 
             # State 5: Land on the ground when explorer can't find more space to explore
             if self.state == State.Landing:
+                self.cf.stop_hovering()
                 self.cf.land()
-                rospy.sleep(1)
                 break
 
         rospy.loginfo("State machine finished!")
@@ -135,7 +142,7 @@ class StateMachine(object):
 
 
     def path_executed_callback(self, msg):
-        self.is_executed = msg
+        self.is_executed = msg.data
 
 
 if __name__ == '__main__':

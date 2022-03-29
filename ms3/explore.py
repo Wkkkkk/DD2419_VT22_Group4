@@ -37,7 +37,7 @@ class Explore:
             x_max = self.grid.dim[0]
         y_max = rand_index[1] + index_range
         if y_max > self.grid.dim[1]:
-            xymax = self.grid.dim[1]
+            y_max = self.grid.dim[1]
         x_min = rand_index[0] - index_range
         if x_min < 0:
             x_min = 0
