@@ -175,9 +175,11 @@ class Localization(object):
         min_yaw = 100
         while True:
             match_frame_id = 'aruco/marker{}'.format(n)
+            n += 1
+
             # Find transform between detected marker and all static markers
             try:
-                trans = self.tf_buffer.lookup_transform(target_frame_id, match_frame_id, rospy.Time(), rospy.Duration(3.0))
+                trans = self.tf_buffer.lookup_transform(target_frame_id, match_frame_id, rospy.Time(), rospy.Duration(5))
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
                 # print(target_frame_id, match_frame_id)
                 # print(e)
@@ -187,38 +189,39 @@ class Localization(object):
             distance = np.linalg.norm(p)
             roll, pitch, yaw = euler_from_quaternion(q)
             #yaw = roll  # because of aruco marker orientation
-            rospy.loginfo("Detect: %s matching %s distance %f", target_frame_id, match_frame_id, distance)
+
+            print(yaw)
             if np.abs(yaw) <= math.pi / 6:
                 if np.abs(yaw) <= min_yaw and distance <= min_distance:
-                    rospy.loginfo("matched: %d", n)
                     marker_id = n
                     min_distance = distance
                     min_yaw = yaw
-            n += 1
+
+        print("match!", marker_id)        
         return marker_id
 
 
     def marker_callback(self, msg):
         markers = msg.markers
 
-        for marker in markers: 
+        for marker in markers:
             marker_id = self.data_association(marker)
-            print("Find marker with id:", marker.id, " match it with:", marker_id)  
             if not marker_id:  # No matched marker
                 continue
             else:
-                rospy.loginfo("Find marker: %d", marker_id)
+                rospy.loginfo("Find marker: %s", marker_id)
 
             # Find marker position in map frame
             m = self.tf_buffer.lookup_transform('map',
                                                 'aruco/marker{}'.format(marker_id),
                                                 rospy.Time(),
-                                                rospy.Duration(3.0))
+                                                rospy.Duration(5.0))
             # Find marker position in odom frame
             o = self.tf_buffer.lookup_transform('cf1/odom',
                                                 'aruco/detected{}'.format(marker.id),
                                                 rospy.Time(),
-                                                rospy.Duration(3.0))
+                                                rospy.Duration(5.0))
+
             M = hcmatrix_from_transform(m)
             O = hcmatrix_from_transform(o)
             O_inv = np.linalg.inv(O)
