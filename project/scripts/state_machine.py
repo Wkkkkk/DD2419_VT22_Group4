@@ -80,7 +80,7 @@ class StateMachine(object):
             # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
                 rospy.loginfo("Generating the next exploration goal")
-                next_pose = self.explore.next_goal(self.current_pose)
+                next_pose = self.explore.next_goal(self.tf.transform2map(self.current_pose))
                 if next_pose is None:
                     self.state = State.Landing
                 else:
@@ -120,7 +120,7 @@ class StateMachine(object):
             continue
 
     def pose_callback(self, msg):
-        self.current_pose = self.tf.transform2map(msg)
+        self.current_pose = msg
 
 
 if __name__ == '__main__':

@@ -111,7 +111,7 @@ class Crazyflie:
 
     def start_hovering(self):
         rospy.loginfo("start hovering")
-        self.position_msg = self.tf.transform2odom(self.current_pose)
+        self.position_msg = self.tf.position_msg(self.current_pose)
         self.hover_timer = rospy.Timer(rospy.Duration(1.0 / 20), self.hover)
 
     def stop_hovering(self):
@@ -127,7 +127,7 @@ class Crazyflie:
 
     # take off to height
     def takeOff(self, start_pose, height):
-        self.position_msg = self.tf.transform2odom(start_pose)
+        self.position_msg = self.tf.position_msg(start_pose)
         self.position_msg.z = height
         self.pub_position.publish(self.position_msg)
         self.rate.sleep()
@@ -155,7 +155,7 @@ class Crazyflie:
 
     # rotate itself
     def rotate(self, height=0.4):
-        rot_msg = self.tf.transform2odom(self.current_pose)
+        rot_msg = self.tf.position_msg(self.current_pose)#self.tf.transform2odom(self.current_pose)
         yaw = rot_msg.yaw
         delta_yaw = 10
         #tol = 10
@@ -175,7 +175,7 @@ class Crazyflie:
             count += 1
 
     def land(self):
-        position_msg = self.tf.transform2odom(self.current_pose)
+        position_msg = self.tf.position_msg(self.current_pose)#self.tf.transform2odom(self.current_pose)
         landing_height = 0.1
         position_msg.z = landing_height
         while not self.current_pose.pose.position.z < landing_height:
@@ -185,5 +185,6 @@ class Crazyflie:
 
     def pose_callback(self, msg):
         """ Retrieves the current pose of the drone in odom frame."""
-        self.current_pose = self.tf.transform2map(msg)
+        #self.current_pose = self.tf.transform2map(msg)
+        self.current_pose = msg
 
