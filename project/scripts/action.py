@@ -10,7 +10,6 @@ from threading import Thread
 from transform import Transform
 from geometry_msgs.msg import PoseStamped, Point
 
-
 class Crazyflie:
     def __init__(self, prefix="cf1"):
         self.prefix = prefix
@@ -188,3 +187,6 @@ class Crazyflie:
         #self.current_pose = self.tf.transform2map(msg)
         self.current_pose = msg
 
+=======
+        self.current_pose = self.tf.transform2map(msg)
+>>>>>>> f80e47d14931fd563ed1f451a32c95f0d048f798
