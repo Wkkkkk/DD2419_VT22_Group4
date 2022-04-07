@@ -12,7 +12,7 @@ class Explore:
     def __init__(self, grid, current_pose):
         self.grid = grid
         self.e_map = grid.reset_exploration_map()
-        self.range = int(0.4/self.grid.resolution)
+        self.range = int(0.5/self.grid.resolution)
 
         current_position = np.array([current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z])
         self.current_index = self.grid.convert_to_index(current_position)
@@ -30,7 +30,7 @@ class Explore:
                 y_rand = np.random.randint(self.grid.dim[1])
                 rand_index = np.array([x_rand, y_rand])
                 if self.grid[rand_index] != self.grid.occupied_space and \
-                        np.linalg.norm(self.current_index-rand_index) > self.range:
+                        np.linalg.norm(self.current_index-rand_index) > 2*self.range:
                     break
             rand_indices[i] = np.array([x_rand, y_rand])
 
@@ -68,7 +68,7 @@ class Explore:
                     break
 
         dist = np.linalg.norm(self.current_index-goal_index)
-        dist_weight = 10/self.grid.resolution
+        dist_weight = 5/self.grid.resolution
         if dist != 0 and score > 0:
             score = score + dist_weight/dist
 
@@ -96,7 +96,7 @@ class Explore:
                 found_point = True
             count += 1
 
-         if found_point and max_score > 3/self.grid.resolution:
+        if found_point and max_score > 2.5/self.grid.resolution:
             for index in explored_cells:
                 self.e_map[index[0]][index[1]] = 0
             yaw = np.random.uniform(-pi, pi)

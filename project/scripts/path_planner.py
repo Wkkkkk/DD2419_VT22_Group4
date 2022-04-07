@@ -12,18 +12,17 @@ from transform import Transform
 
 
 class Planner:
-    def __init__(self, goal_pose, grid):
+    def __init__(self, start_pose, goal_pose, grid):
         self.tf = Transform()
         self.current_pose = None
 
         self.grid = grid
 
-        self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
+        #self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
         self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=2)
 
-        self.start, self.goal = self.initialize_planning(goal_pose)
-        print(self.start.index)
-        print(self.goal.index)
+        self.start, self.goal = self.initialize_planning(start_pose, goal_pose)
+
         self.grid[self.start.index] = self.start
         self.grid[self.goal.index] = self.goal
 
@@ -33,9 +32,9 @@ class Planner:
                                         if ((0 <= i <= X) and (0 <= j <= Y) and not (i == x and j == y)
                                             and self.grid[(i, j)] != self.grid.occupied_space)]
 
-    def pose_callback(self, msg):
-        """ Retrieves the current pose of the drone in odom frame."""
-        self.current_pose = self.tf.transform2map(msg)
+    # def pose_callback(self, msg):
+    #     """ Retrieves the current pose of the drone in odom frame."""
+    #     self.current_pose = self.tf.transform2map(msg)
 
     def compute_cost(self, node):
         if node.parent is self.start:
@@ -123,12 +122,12 @@ class Planner:
             rospy.loginfo("Could not find a trajectory!")
             return None
 
-    def initialize_planning(self, goal_pose):
-        while not self.current_pose:
-            # rospy.loginfo("Waiting for current pose to be initialized")
-            continue
+    def initialize_planning(self, start_pose,  goal_pose):
+        # while not self.current_pose:
+        #     # rospy.loginfo("Waiting for current pose to be initialized")
+        #     continue
 
-        start_pose = self.current_pose
+        # start_pose = self.current_pose
 
         start_yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         start_pos = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
@@ -136,8 +135,6 @@ class Planner:
         goal_yaw = self.tf.quaternion2yaw(goal_pose.pose.orientation)
         goal_pos = np.array([goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z])
 
-        print(start_pos)
-        print(goal_pos)
 
         start = Node(self.grid.convert_to_index(start_pos), None, start_pos, start_yaw)
 

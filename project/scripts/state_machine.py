@@ -42,13 +42,13 @@ class StateMachine(object):
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
 
-        self.current_pose = None
+        self.current_pose = None 
 
         # Subscribe to topics
         self.sub_pose = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
 
         self.wait_for_pose()
-        self.start_pose = self.current_pose
+        self.start_pose = self.tf.transform2map(self.current_pose)
         self.explore = Explore(self.grid, self.start_pose)
 
         self.tol = 0.05
@@ -71,16 +71,14 @@ class StateMachine(object):
 
             # State 1: lift off and hover
             if self.state == State.Init:
-                self.cf.takeOff(self.start_pose, self.height)
-                if self.tol > abs(self.current_pose.pose.position.z - self.height):
-                    #self.cf.start_hovering()
-                    self.state = State.RotateAndSearchForIntruder
-                    # self.state = State.GenerateExplorationGoal
+                self.cf.takeOff(self.height)
+                self.state = State.RotateAndSearchForIntruder
 
             # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
                 rospy.loginfo("Generating the next exploration goal")
-                next_pose = self.explore.next_goal(self.current_pose)
+                self.start_pose = self.tf.transform2map(self.current_pose)
+                next_pose = self.explore.next_goal(self.start_pose)
                 if next_pose is None:
                     self.state = State.Landing
                 else:
@@ -89,7 +87,7 @@ class StateMachine(object):
             # State 3: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
                 rospy.loginfo("Go to next goal")
-                A = Planner(next_pose, self.grid)
+                A = Planner(self.start_pose, next_pose, self.grid)
                 path = A.run()
                 if path is None:
                     self.state = State.GenerateExplorationGoal
@@ -101,8 +99,7 @@ class StateMachine(object):
             # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
                 rospy.loginfo("Checks for intruders")
-                #self.cf.rotate(3, 5)
-                self.cf.rotate()
+                self.cf.rotate(6, 5)
                 self.state = State.GenerateExplorationGoal
                 self.cf.start_hovering()
 
@@ -120,7 +117,7 @@ class StateMachine(object):
             continue
 
     def pose_callback(self, msg):
-        self.current_pose = self.tf.transform2map(msg)
+        self.current_pose = msg
 
 
 if __name__ == '__main__':
@@ -131,3 +128,4 @@ if __name__ == '__main__':
         pass
 
     rospy.spin()
+
