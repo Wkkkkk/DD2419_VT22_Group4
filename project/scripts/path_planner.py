@@ -11,30 +11,31 @@ from node import Node
 from transform import Transform
 
 
-
 class Planner:
     def __init__(self, goal_pose, grid):
-        self.tr = Transform()
+        self.tf = Transform()
         self.current_pose = None
-        #self.grid = GridMap(0.1, world)
+
         self.grid = grid
 
         self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
         self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=2)
 
         self.start, self.goal = self.initialize_planning(goal_pose)
+        print(self.start.index)
+        print(self.goal.index)
         self.grid[self.start.index] = self.start
         self.grid[self.goal.index] = self.goal
 
-        X = self.grid.dim[0]
-        Y = self.grid.dim[1]
+        X = self.grid.dim[0]-1
+        Y = self.grid.dim[1]-1
         self.neighbours = lambda x, y: [self.grid[(i, j)] for i in range(x-1, x+2) for j in range(y-1, y+2)
-                                        if ((0 <= i <= X) and (0 <= j <= Y) and i != x and j != y
+                                        if ((0 <= i <= X) and (0 <= j <= Y) and not (i == x and j == y)
                                             and self.grid[(i, j)] != self.grid.occupied_space)]
 
     def pose_callback(self, msg):
         """ Retrieves the current pose of the drone in odom frame."""
-        self.current_pose = self.tr.transform2map(msg)
+        self.current_pose = self.tf.transform2map(msg)
 
     def compute_cost(self, node):
         if node.parent is self.start:
@@ -54,14 +55,13 @@ class Planner:
         node.cost = node.cost2go + node.cost2come
 
     def get_setpoints(self):
-        tol = 0.1
+        tol = 10
         setpoints = []
-        goal = self.tr.pose_stamped(self.goal.position, self.goal.yaw)
-        setpoints.append(goal)
+        goal = self.tf.pose_stamped_msg(self.goal.position, self.goal.yaw)
         node = self.goal
         while node is not self.start:
             q = node.parent
-            while q.parent is not None:
+            while q is not None:
                 if not self.grid.raytrace(node.index, q.index, False):
                     node.parent = q
                 else:
@@ -69,14 +69,13 @@ class Planner:
                 q = q.parent
             p = node.parent
             p.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
-            if abs(p.yaw - node.yaw) > tol:
-                setpoints.append(self.tr.pose_stamped(node.position, p.yaw))
+            yaw_diff = abs(np.degrees(p.yaw) - np.degrees(node.yaw))
+            if yaw_diff > tol and yaw_diff < 360-tol:
+               setpoints.append(self.tf.pose_stamped_msg(node.position, p.yaw))
+
             p.position[2] = self.start.position[2]
-            setpoints.append(self.tr.pose_stamped(p.position, p.yaw))
+            setpoints.append(self.tf.pose_stamped_msg(p.position, p.yaw))
             node = p
-        if self.start.parent is not None:
-            if self.start.parent.yaw != self.start.yaw:
-                setpoints.append(self.tr.pose_stamped(self.start.position, self.start.parent.yaw))
         setpoints.reverse()
         return setpoints
 
@@ -87,21 +86,16 @@ class Planner:
         closed_set = set()
 
         open_set.append(self.start)
-        #print("goal", self.goal.index)
-        #print("goal value", self.grid[self.goal.index])
-        #print("start index", self.start.index)
-        #print("start value", self.grid[self.start.index])
 
         while len(open_set) > 0:
             node = open_set[0]
-            for e in open_set:
+            for e in open_set[1:]:
                 if e.cost <= node.cost:
                     if e.cost2go < node.cost2go:
                         node = e
 
             open_set.remove(node)
             closed_set.add(node)
-            #print(node.index)
 
             if node is self.goal:
                 rospy.loginfo("Found the goal!")
@@ -129,32 +123,24 @@ class Planner:
             rospy.loginfo("Could not find a trajectory!")
             return None
 
-        #return goal_found
-
     def initialize_planning(self, goal_pose):
         while not self.current_pose:
             # rospy.loginfo("Waiting for current pose to be initialized")
             continue
 
-        root_pose = self.current_pose
+        start_pose = self.current_pose
 
-        root_yaw = self.tr.quaternion2yaw(root_pose.pose.orientation)
-        root_pos = np.array([root_pose.pose.position.x, root_pose.pose.position.y, root_pose.pose.position.z])
-        start_pos = root_pos.copy()
+        start_yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
+        start_pos = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
 
-        goal_yaw = self.tr.quaternion2yaw(goal_pose.pose.orientation)
+        goal_yaw = self.tf.quaternion2yaw(goal_pose.pose.orientation)
         goal_pos = np.array([goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z])
-        tol = 1e-1
 
-        if root_pos[2] < tol:
-            start_pos[2] = goal_pos[2]
+        print(start_pos)
+        print(goal_pos)
 
-        root = Node(self.grid.convert_to_index(root_pos), None, root_pos, root_yaw)
+        start = Node(self.grid.convert_to_index(start_pos), None, start_pos, start_yaw)
 
-        if root_pos[2] < tol:
-            start = Node(self.grid.convert_to_index(start_pos), root, start_pos, root_yaw)
-        else:
-            start = root
         goal = Node(self.grid.convert_to_index(goal_pos), None, goal_pos, goal_yaw)
 
         return start, goal
@@ -174,7 +160,7 @@ def main(argv=sys.argv):
     with open(args[1], 'rb') as f:
         world = json.load(f)
     #while not rospy.is_shutdown():
-    goal_pose = tr.pose_stamped(np.array([0.0, 2.3, 0.5]), 0.0)
+    goal_pose = tr.pose_stamped_msg(np.array([0.0, 2.3, 0.5]), 0.0)
     A = Planner(goal_pose, world)
     A.run()
 if __name__ == "__main__":

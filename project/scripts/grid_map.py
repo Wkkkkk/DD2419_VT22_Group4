@@ -10,11 +10,10 @@ class GridMap:
         self.bounds = [np.array(world['airspace']["min"]), np.array(world['airspace']["max"])]
         self.occupied_space = 1
         self.radius = radius
-        self.resolution = (self.bounds[1][0] - self.bounds[0][0])/40
+        self.resolution = (self.bounds[1][0] - self.bounds[0][0])/20
+        print(self.resolution)
 
-        X = int((self.bounds[1][0] - self.bounds[0][0]) / self.resolution) + 1
-        Y = int((self.bounds[1][1] - self.bounds[0][1]) / self.resolution) + 1
-        self.dim = [X - 1, Y - 1]
+        self.dim = ((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
 
         self.map, self.explore_map = self.create_map(world['walls'])
 
@@ -31,8 +30,8 @@ class GridMap:
         return float_index.astype(int)
 
     def create_map(self, walls):
-        map = np.empty((self.dim[0]+1, self.dim[1]+1), dtype=object)
-        explore_map = np.ones((self.dim[0] + 1, self.dim[1] + 1), dtype=object)
+        map = np.empty((self.dim[0], self.dim[1]), dtype=object)
+        explore_map = np.ones((self.dim[0], self.dim[1]), dtype=object)
 
         padding = int(round(self.radius/self.resolution))
 
@@ -40,29 +39,8 @@ class GridMap:
             v1 = np.array(wall["plane"]["start"][0:-1])
             v2 = np.array(wall["plane"]["stop"][0:-1])
 
-            sign1 = np.ones(2)
-            sign2 = np.ones(2)
-
-            if v1[0] > v2[0]:
-                sign2[0] = -1
-            else:
-                sign1[0] = -1
-            if v1[1] > v2[1]:
-                sign2[1] = -1
-            else:
-                sign1[1] = -1
-
-            if v1[0]+self.radius > self.bounds[1][0] or v1[0]-self.radius < self.bounds[0][0]:
-                sign1[0] = 0
-            if v1[1]+self.radius > self.bounds[1][1] or v1[1]-self.radius < self.bounds[0][1]:
-                sign1[1] = 0
-            if v2[0]+self.radius > self.bounds[1][0] or v2[0]-self.radius < self.bounds[0][0]:
-                sign2[0] = 0
-            if v2[1]+self.radius > self.bounds[1][1] or v2[1]-self.radius < self.bounds[0][1]:
-                sign2[1] = 0
-
-            index1 = self.convert_to_index(v1+self.radius*sign1)
-            index2 = self.convert_to_index(v2+self.radius*sign2)
+            index1 = self.convert_to_index(v1)
+            index2 = self.convert_to_index(v2)
             occupied_cells = self.raytrace(index1, index2, True)
 
             for cell in occupied_cells:
@@ -72,15 +50,15 @@ class GridMap:
                 y_max = cell[1]+padding
                 for x in range(x_min, x_max+1):
                     for y in range(y_min, y_max+1):
-                        if self.dim[0] >= x >= 0 and self.dim[1] >= y >= 0:
+                        if self.dim[0]-1 >= x >= 0 and self.dim[1]-1 >= y >= 0:
                             map[x][y] = self.occupied_space
                             if (x == x_min or x == x_max or y == y_min or y == y_max) and explore_map[x][y] != 0:
                                 explore_map[x][y] = 3
                             else:
                                 explore_map[x][y] = 0
 
-        for x in range(0, self.dim[0]+1):
-            for y in range(0, self.dim[1]+1):
+        for x in range(0, self.dim[0]):
+            for y in range(0, self.dim[1]):
                 if map[x][y] != self.occupied_space:
                     index = np.array([x, y])
                     pos2D = self.index_to_world(index)
@@ -117,6 +95,8 @@ class GridMap:
                     p -= 2 * dx
                 p += 2 * dy
                 if returnList:
+                    if x_start < 0 or y_start < 0 or x_start > self.dim[0]-1 or y_start > self.dim[1]-1:
+                        break
                     traversed.append(np.array([x_start, y_start]))
                 else:
                     if self.map[x_start][y_start] == self.occupied_space:
@@ -130,6 +110,8 @@ class GridMap:
                     p -= 2 * dy
                 p += 2 * dx
                 if returnList:
+                    if x_start < 0 or y_start < 0 or x_start > self.dim[0]-1 or y_start > self.dim[1]-1:
+                        break
                     traversed.append(np.array([x_start, y_start]))
                 else:
                     if self.map[x_start][y_start] == self.occupied_space:

@@ -7,6 +7,7 @@ from geometry_msgs.msg import PoseStamped
 from crazyflie_driver.msg import Position
 import rospy
 from math import *
+import numpy as np
 
 
 class Transform:
@@ -45,18 +46,21 @@ class Transform:
                                                   goal_odom.pose.orientation.y,
                                                   goal_odom.pose.orientation.z,
                                                   goal_odom.pose.orientation.w))
-        goal.yaw = degrees(yaw)
+        goal.yaw = np.degrees(yaw)
         return goal
 
     def quaternion2yaw(self, q):
         return atan2(2 * (q.w * q.z + q.x * q.y),
                      1 - 2 * (q.y * q.y + q.z * q.z))
+        # roll, pitch, yaw = euler_from_quaternion((q.x, q.y, q.z, q.w))
+        # return yaw
 
     def yaw2quaternion(self, yaw):
         return quaternion_from_euler(0.0, 0.0, yaw)
 
-    def pose_stamped(self, position, yaw):
+    def pose_stamped_msg(self, position, yaw):
         msg = PoseStamped()
+        msg.header.frame_id = 'map'
         msg.header.stamp = rospy.Time.now()
         msg.pose.position.x = position[0]
         msg.pose.position.y = position[1]
@@ -66,6 +70,16 @@ class Transform:
         msg.pose.orientation.y = q[1]
         msg.pose.orientation.z = q[2]
         msg.pose.orientation.w = q[3]
-        msg.header.frame_id = 'map'
         return msg
+
+    def position_msg(self, m):
+        msg = Position()
+        msg.header.frame_id = 'map'
+        msg.header.stamp = rospy.Time.now()
+        msg.x = m.pose.position.x
+        msg.y = m.pose.position.y
+        msg.z = m.pose.position.z
+        msg.yaw = np.degrees(self.quaternion2yaw(m.pose.orientation))
+        return msg
+
 
