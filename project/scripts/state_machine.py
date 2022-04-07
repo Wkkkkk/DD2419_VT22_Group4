@@ -71,17 +71,14 @@ class StateMachine(object):
 
             # State 1: lift off and hover
             if self.state == State.Init:
-                self.cf.takeOff(self.start_pose, self.height)
-                if self.tol > abs(self.current_pose.pose.position.z - self.height):
-                    #self.cf.start_hovering()
-                    self.state = State.RotateAndSearchForIntruder
-                    # self.state = State.GenerateExplorationGoal
+                self.cf.takeOff(self.height)
+                self.state = State.RotateAndSearchForIntruder
 
             # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
                 rospy.loginfo("Generating the next exploration goal")
                 self.start_pose = self.tf.transform2map(self.current_pose)
-                next_pose = self.explore.next_goal()
+                next_pose = self.explore.next_goal(self.start_pose)
                 if next_pose is None:
                     self.state = State.Landing
                 else:
@@ -102,8 +99,7 @@ class StateMachine(object):
             # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
                 rospy.loginfo("Checks for intruders")
-                #self.cf.rotate(3, 5)
-                self.cf.rotate()
+                self.cf.rotate(6, 5)
                 self.state = State.GenerateExplorationGoal
                 self.cf.start_hovering()
 

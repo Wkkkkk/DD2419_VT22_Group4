@@ -42,7 +42,7 @@ class PathExecution:
             odom_point = self.tf.transform2odom(setpoint)
             odom_point.header.seq = 0
             print(odom_point)
-            print("****************************************")
+            #print("****************************************")
             if odom_point:
                 if abs(odom_point.yaw - np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation))) > tol_rot:
                     delta_yaw = tol_rot
@@ -51,11 +51,11 @@ class PathExecution:
                     if yaw > goal_yaw and abs(yaw-goal_yaw) < 180:
                         delta_yaw = -delta_yaw
                     #N = int(abs(goal_yaw-yaw)/abs(delta_yaw))
-                    print("goal yaw: ", goal_yaw)
-                    print("current yaw: ", yaw)
+                    #print("goal yaw: ", goal_yaw)
+                    #print("current yaw: ", yaw)
                     while not rospy.is_shutdown():
                         yaw += delta_yaw
-                        print("piecewise yaw: ", yaw)
+                        #print("piecewise yaw: ", yaw)
                         if yaw > 180:
                             yaw = yaw - 360
                         if yaw < -180:
