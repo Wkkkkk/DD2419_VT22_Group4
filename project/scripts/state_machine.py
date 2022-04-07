@@ -42,13 +42,13 @@ class StateMachine(object):
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
 
-        self.current_pose = None
+        self.current_pose = None 
 
         # Subscribe to topics
         self.sub_pose = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
 
         self.wait_for_pose()
-        self.start_pose = self.current_pose
+        self.start_pose = self.tf.transform2map(self.current_pose)
         self.explore = Explore(self.grid, self.start_pose)
 
         self.tol = 0.05
@@ -80,7 +80,8 @@ class StateMachine(object):
             # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
                 rospy.loginfo("Generating the next exploration goal")
-                next_pose = self.explore.next_goal(self.tf.transform2map(self.current_pose))
+                self.start_pose = self.tf.transform2map(self.current_pose)
+                next_pose = self.explore.next_goal()
                 if next_pose is None:
                     self.state = State.Landing
                 else:
@@ -89,7 +90,7 @@ class StateMachine(object):
             # State 3: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
                 rospy.loginfo("Go to next goal")
-                A = Planner(next_pose, self.grid)
+                A = Planner(self.start_pose, next_pose, self.grid)
                 path = A.run()
                 if path is None:
                     self.state = State.GenerateExplorationGoal
@@ -131,3 +132,4 @@ if __name__ == '__main__':
         pass
 
     rospy.spin()
+
