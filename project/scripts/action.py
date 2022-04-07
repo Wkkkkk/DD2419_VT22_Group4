@@ -10,7 +10,6 @@ from threading import Thread
 from transform import Transform
 from geometry_msgs.msg import PoseStamped, Point
 
-
 class Crazyflie:
     def __init__(self, prefix="cf1"):
         self.prefix = prefix
@@ -186,4 +185,3 @@ class Crazyflie:
     def pose_callback(self, msg):
         """ Retrieves the current pose of the drone in odom frame."""
         self.current_pose = self.tf.transform2map(msg)
-

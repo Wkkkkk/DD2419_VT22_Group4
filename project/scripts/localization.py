@@ -175,7 +175,6 @@ class Localization(object):
         min_yaw = 100
         while True:
             match_frame_id = 'aruco/marker{}'.format(n)
-
             # Find transform between detected marker and all static markers
             try:
                 trans = self.tf_buffer.lookup_transform(target_frame_id, match_frame_id, rospy.Time(), rospy.Duration(3.0))
@@ -188,7 +187,6 @@ class Localization(object):
             distance = np.linalg.norm(p)
             roll, pitch, yaw = euler_from_quaternion(q)
             #yaw = roll  # because of aruco marker orientation
-
             rospy.loginfo("Detect: %s matching %s distance %f", target_frame_id, match_frame_id, distance)
             if np.abs(yaw) <= math.pi / 6:
                 if np.abs(yaw) <= min_yaw and distance <= min_distance:
@@ -197,7 +195,6 @@ class Localization(object):
                     min_distance = distance
                     min_yaw = yaw
             n += 1
-   
         return marker_id
 
 
@@ -222,7 +219,6 @@ class Localization(object):
                                                 'aruco/detected{}'.format(marker.id),
                                                 rospy.Time(),
                                                 rospy.Duration(3.0))
-
             M = hcmatrix_from_transform(m)
             O = hcmatrix_from_transform(o)
             O_inv = np.linalg.inv(O)
