@@ -1,14 +1,47 @@
 #!/usr/bin/env python
 
+import sys
 import math
+import json
+
 import rospy
 import tf2_ros
 import tf2_geometry_msgs
 import numpy as np
 from tf.transformations import quaternion_from_matrix, quaternion_matrix, euler_from_quaternion, quaternion_from_euler
 from std_msgs.msg import Empty
-from geometry_msgs.msg import PoseStamped, TransformStamped
+from geometry_msgs.msg import Pose, PoseStamped, TransformStamped, Vector3
 from aruco_msgs.msg import MarkerArray
+import networkx as nx
+
+
+def pose_from_transform(t):
+    """Convert a C{geometry_msgs/TransformStamped} into Pose
+ 
+    @param t: ROS message to be converted
+    @return: Pose
+    """
+    p = Pose()
+    p.orientation = t.transform.rotation
+    p.position.x = t.transform.translation.x
+    p.position.y = t.transform.translation.y
+    p.position.z = t.transform.translation.z
+
+    return p
+
+def transform_from_marker(m, id):
+    t = TransformStamped()
+    t.header.frame_id = 'map'
+    t.child_frame_id = 'aruco/marker' + str(id)
+    t.transform.translation = Vector3(*m['pose']['position'])
+    roll, pitch, yaw = m['pose']['orientation']
+    (t.transform.rotation.x,
+     t.transform.rotation.y,
+     t.transform.rotation.z,
+     t.transform.rotation.w) = quaternion_from_euler(math.radians(roll),
+                                                     math.radians(pitch),
+                                                     math.radians(yaw))
+    return t
 
 
 def hcmatrix_from_transform(t):
@@ -149,8 +182,43 @@ class KalmanFilter:
         return msg
 
 
+class Matcher:
+    def __init__(self, static_marker_transforms):
+        self.static_markers = {t.child_frame_id:t for t in static_marker_transforms}
+        #print(self.static_markers)
+
+    def match(self, transform_list):
+        graph = nx.Graph()
+        for transform in transform_list:
+            frame_id = transform.child_frame_id
+            graph.add_node(frame_id, bipartite=0)
+            for marker_frame_id, marker_transform in self.static_markers.items():
+                graph.add_node(marker_frame_id, bipartite=1)
+                distance = self.calculate(transform, marker_transform)
+                score = 1/distance
+                if score is not None:
+                    graph.add_edge(frame_id, marker_frame_id, weight=score)
+        match_set = nx.max_weight_matching(graph)
+        res = dict()
+        for (node_1, node_2) in match_set:
+            if node_1.startswith('aruco/marker'):
+                node_1, node_2 = node_2, node_1
+            res[node_1] = node_2
+        return res
+
+
+    def calculate(self, transform, static_transform):
+        t1 = hcmatrix_from_transform(transform)
+        t2 = hcmatrix_from_transform(static_transform)
+        diff_abs = np.absolute(t1-t2)
+        diff_sum = diff_abs.sum()
+        #print("diff:", transform.child_frame_id, " ", static_transform.child_frame_id, " ", diff_sum)
+
+        return diff_sum
+
+
 class Localization(object):
-    def __init__(self):
+    def __init__(self, matcher):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.broadcaster = tf2_ros.TransformBroadcaster()
@@ -163,57 +231,40 @@ class Localization(object):
         self.transform.transform.rotation.w = 1
 
         self.kf = KalmanFilter()
-
-
-    def data_association(self, marker):
-        marker_id = None
-        target_id = marker.id
-        target_frame_id = 'aruco/detected{}'.format(target_id)
-        
-        n = 0
-        min_distance = 100
-        min_yaw = 100
-        while True:
-            match_frame_id = 'aruco/marker{}'.format(n)
-            # Find transform between detected marker and all static markers
-            try:
-                trans = self.tf_buffer.lookup_transform(target_frame_id, match_frame_id, rospy.Time(), rospy.Duration(3.0))
-            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-                # print(target_frame_id, match_frame_id)
-                # print(e)
-                break  # if n exceeds number for last non-unique static marker in map, end the loop.
-            p,q = transform_stamped_to_pq(trans)
-
-            distance = np.linalg.norm(p)
-            roll, pitch, yaw = euler_from_quaternion(q)
-            #yaw = roll  # because of aruco marker orientation
-            rospy.loginfo("Detect: %s matching %s distance %f", target_frame_id, match_frame_id, distance)
-            if np.abs(yaw) <= math.pi / 6:
-                if np.abs(yaw) <= min_yaw and distance <= min_distance:
-                    rospy.loginfo("matched: %d", n)
-                    marker_id = n
-                    min_distance = distance
-                    min_yaw = yaw
-            n += 1
-        return marker_id
+        self.matcher = matcher
 
 
     def marker_callback(self, msg):
         markers = msg.markers
 
-        for marker in markers: 
-            #marker_id = self.data_association(marker)
-            marker_id = marker.id
-            print("Find marker with id:", marker.id, " match it with:", marker_id)  
+        detected_markers = []
+        for marker in markers:
+            # Find detected marker position in map frame
+            if self.tf_buffer.can_transform('map', 'aruco/detected{}'.format(marker.id), rospy.Time(), rospy.Duration(3.0)):
+                t = self.tf_buffer.lookup_transform('map',
+                                                    'aruco/detected{}'.format(marker.id),
+                                                    rospy.Time(),
+                                                    rospy.Duration(3.0))
+                detected_markers.append(t)
+                # p = pose_from_transform(t)
+                # print("find marker:", marker.id, p)
+        if not detected_markers:
+            print("No match")
+            return
+
+        res = self.matcher.match(detected_markers)
+        print("---")
+        for detected, static in res.items():
+            print("match:", detected, " with:", static)  
 
             # Find marker position in map frame
             m = self.tf_buffer.lookup_transform('map',
-                                                'aruco/marker{}'.format(marker_id-1),
+                                                static,
                                                 rospy.Time(),
                                                 rospy.Duration(3.0))
             # Find marker position in odom frame
             o = self.tf_buffer.lookup_transform('cf1/odom',
-                                                'aruco/detected{}'.format(marker.id),
+                                                detected,
                                                 rospy.Time(),
                                                 rospy.Duration(3.0))
             M = hcmatrix_from_transform(m)
@@ -230,10 +281,24 @@ class Localization(object):
             self.initialization.publish(Empty())
 
 
-def main():
+
+def main(argv=sys.argv):
+    # Let ROS filter through the arguments
+    args = rospy.myargv(argv=argv)
+
+    # Load world JSON
+    with open(args[1], 'rb') as f:
+        world = json.load(f)
+
+    # Create a transform for each marker
+    transforms = [transform_from_marker(m, index+1) for index, m in enumerate(world['markers'])]
+    matcher = Matcher(transforms)
+
     rospy.init_node('localization')
-    localization = Localization()
+    localization = Localization(matcher)
     aruco_subscriber = rospy.Subscriber('/aruco/markers', MarkerArray, localization.marker_callback)
+    broadcaster = tf2_ros.StaticTransformBroadcaster()
+    broadcaster.sendTransform(transforms)
 
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():

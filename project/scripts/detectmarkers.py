@@ -21,7 +21,6 @@ def marker_callback(marker_message):
         t.child_frame_id = '/aruco/detected{}'.format(marker.id)
         t.transform.translation = marker.pose.pose.position
         t.transform.rotation = marker.pose.pose.orientation
-	print(marker)
 
         broadcaster.sendTransform(t)
 
