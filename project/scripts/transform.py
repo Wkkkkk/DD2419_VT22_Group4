@@ -50,10 +50,10 @@ class Transform:
         return goal
 
     def quaternion2yaw(self, q):
-        return atan2(2 * (q.w * q.z + q.x * q.y),
-                     1 - 2 * (q.y * q.y + q.z * q.z))
-        # roll, pitch, yaw = euler_from_quaternion((q.x, q.y, q.z, q.w))
-        # return yaw
+        # return atan2(2 * (q.w * q.z + q.x * q.y),
+        #              1 - 2 * (q.y * q.y + q.z * q.z))
+        roll, pitch, yaw = euler_from_quaternion((q.x, q.y, q.z, q.w))
+        return yaw
 
     def yaw2quaternion(self, yaw):
         return quaternion_from_euler(0.0, 0.0, yaw)
@@ -61,6 +61,7 @@ class Transform:
     def pose_stamped_msg(self, position, yaw):
         msg = PoseStamped()
         msg.header.frame_id = 'map'
+        msg.header.seq = 0
         msg.header.stamp = rospy.Time.now()
         msg.pose.position.x = position[0]
         msg.pose.position.y = position[1]
@@ -76,6 +77,7 @@ class Transform:
         msg = Position()
         msg.header.frame_id = 'map'
         msg.header.stamp = rospy.Time.now()
+        msg.header.seq = 0
         msg.x = m.pose.position.x
         msg.y = m.pose.position.y
         msg.z = m.pose.position.z

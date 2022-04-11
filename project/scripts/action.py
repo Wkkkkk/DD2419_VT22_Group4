@@ -5,7 +5,6 @@ import numpy as np
 import rospy
 from crazyflie_driver.msg import Hover, Position
 from std_msgs.msg import Empty
-from crazyflie_driver.srv import UpdateParams, GoTo
 from threading import Thread
 from transform import Transform
 from geometry_msgs.msg import PoseStamped, Point
@@ -27,86 +26,51 @@ class Crazyflie:
         self.hover_msg.header.seq = 0
         self.hover_msg.header.stamp = rospy.Time.now()
         self.hover_msg.header.frame_id = 'c1/odom'
+        self.hover_msg.yawrate = 0
 
         self.pub_position = rospy.Publisher(prefix + "/cmd_position", Position, queue_size=1)
-        self.position_msg = None
+        self.position_msg = Position()
+        self.position_msg.header.seq = 0
+        self.position_msg.header.frame_id = 'c1/odom'
+        self.position_msg.header.stamp = rospy.Time.now()
 
         self.stop_pub = rospy.Publisher(prefix + "/cmd_stop", Empty, queue_size=1)
         self.stop_msg = Empty()
 
-        # rospy.wait_for_service(prefix + '/update_params')
-        # self.update_params = rospy.ServiceProxy(prefix + '/update_params', UpdateParams)        
-        # self.setParam("commander/enHighLevel", 1)
-        # rospy.wait_for_service(prefix + '/go_to')
-        # self.goToService = rospy.ServiceProxy(prefix + "/go_to", GoTo)
-
         self.hover_timer = None
 
-    # def setParam(self, name, value):
-    #     rospy.set_param(self.prefix + "/" + name, value)
-    #     self.update_params([name])
 
-    def getSpeed(self, distance):
-        if distance > 0:
-            return 0.5
-        elif distance < 0:
-            return -0.5
-        else:
-            return 0
+    def goTo(self, goal, vel = 0.3):
+        start_pose = self.current_pose
 
-    def goTo(self, goal):
-        current_position = self.tf.transform2odom(self.current_pose)
-        x = goal.x - current_position.x
-        y = goal.y - current_position.y
-        duration = 0
-        duration_x = 0
-        duration_y = 0
-        vx = 0
-        vy = 0 
+        pos_tol = 0.05
+        dt = 0.1
+        self.position_msg.yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        self.position_msg.header.seq = 0
 
-        # for x, in secs
-        if x != 0:
-            duration_x = abs(x/0.5)
-            vx = self.getSpeed(x)
-
-        # for y, in secs
-        if y != 0:
-            duration_y = abs(y/0.5)
-            vy = self.getSpeed(y)
-
-        durations = [duration_x, duration_y]
-        duration = max(durations)
-
-        if duration == 0:
-            return
-        elif duration == duration_x:
-            vy *= abs(y/x)
-        elif duration == duration_y:
-            vx *= abs(x/y)
+        pose_array = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
+        goal_array = np.array([goal.x, goal.y, goal.z])
+        while not rospy.is_shutdown() and np.linalg.norm(goal_array - pose_array) > pos_tol: 
+            diff = goal_array - pose_array
+            norm_diff = diff/np.linalg.norm(diff)
+            pose_array += dt*vel * norm_diff
+            self.position_msg.x = pose_array[0]
+            self.position_msg.y = pose_array[1]
+            self.position_msg.z = pose_array[2]
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.position_msg.header.seq += 1
+            self.pub_position.publish(self.position_msg)
+            rospy.sleep(dt)
 
         start = rospy.get_time()
         while not rospy.is_shutdown():
-            self.hover_msg.vx = vx
-            self.hover_msg.vy = vy
-            self.hover_msg.yawrate = 0.0
-            self.hover_msg.zDistance = goal.z
             now = rospy.get_time()
-            if (now - start > duration):
+            if (now - start > 2):
                 break
-            self.hover_msg.header.seq += 1
-            self.hover_msg.header.stamp = rospy.Time.now()
-            self.pub_hover.publish(self.hover_msg)
+            goal.header.stamp = rospy.Time.now()
+            goal.header.seq += 1
+            self.pub_position.publish(goal)
             self.rate.sleep()
-
-
-        # gp = Point(goal.x, goal.y, goal.z)
-        # self.goToService(0, False, gp, goal.yaw, rospy.Duration.from_sec(duration))
-        # start = rospy.get_time()
-        # while not rospy.is_shutdown():
-        #     now = rospy.get_time()
-        #     if (now - start > duration):
-        #         break
-        #     self.rate.sleep()
 
 
     def start_hovering(self):
@@ -114,73 +78,113 @@ class Crazyflie:
         self.position_msg = self.tf.position_msg(self.current_pose)
         self.hover_timer = rospy.Timer(rospy.Duration(1.0 / 20), self.hover)
 
+
     def stop_hovering(self):
         if self.hover_timer and self.hover_timer.is_alive():
             rospy.loginfo("stop hovering")
             self.hover_timer.shutdown()
             rospy.sleep(0.1)
 
+
     def hover(self, timer=None):
         self.position_msg.header.stamp = rospy.Time.now()
+        self.position_msg.header.seq += 1
         self.pub_position.publish(self.position_msg)
         self.rate.sleep()
+
 
     # take off to height
-    def takeOff(self, start_pose, height):
-        self.position_msg = self.tf.position_msg(start_pose)
-        self.position_msg.z = height
-        self.pub_position.publish(self.position_msg)
-        self.rate.sleep()
-        # time_range = 1 + int(10*height/0.4)
-        # while not rospy.is_shutdown():
-        #     for y in range(time_range):
-        #         self.hover_msg.vx = 0.0
-        #         self.hover_msg.vy = 0.0
-        #         self.hover_msg.yawrate = 0.0
-        #         self.hover_msg.zDistance = y / 25.0
-        #         self.hover_msg.header.seq += 1
-        #         self.hover_msg.header.stamp = rospy.Time.now()
-        #         self.pub_hover.publish(self.hover_msg)
-        #         self.rate.sleep()
-        #     for y in range(20):
-        #         self.hover_msg.vx = 0.0
-        #         self.hover_msg.vy = 0.0
-        #         self.hover_msg.yawrate = 0.0
-        #         self.hover_msg.zDistance = height
-        #         self.hover_msg.header.seq += 1
-        #         self.hover_msg.header.stamp = rospy.Time.now()
-        #         self.pub_hover.publish(self.hover_msg)
-        #         self.rate.sleep()
-        #     break
+    def takeOff(self, goal_height): 
+        start_pose = self.current_pose
+
+        self.position_msg.x = start_pose.pose.position.x
+        self.position_msg.y = start_pose.pose.position.y
+        #self.position_msg.z = 0.1
+        self.position_msg.yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        self.position_msg.header.seq = 0
+        #self.pub_position.publish(self.position_msg)
+        #self.rate.sleep()
+
+        height = start_pose.pose.position.z
+        tol = 0.05
+        dt = 0.1
+        vel = 0.5
+        while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
+            height_diff = goal_height - height
+            height += dt*vel*height_diff
+            self.position_msg.z = height
+            self.position_msg.header.seq += 1
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.pub_position.publish(self.position_msg)
+            rospy.sleep(dt)
+
+        start = rospy.get_time()
+        while not rospy.is_shutdown():
+            now = rospy.get_time()
+            if (now - start > 2):
+                break
+            self.position_msg.z = goal_height
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.pub_position.publish(self.position_msg)
+            self.rate.sleep()
+
 
     # rotate itself
-    def rotate(self, height=0.4):
-        rot_msg = self.tf.position_msg(self.current_pose)#self.tf.transform2odom(self.current_pose)
-        yaw = rot_msg.yaw
-        delta_yaw = 10
-        #tol = 10
-        count = 0
-        while count < 360/delta_yaw-1:
-            yaw += delta_yaw
-            rot_msg.yaw = yaw
-            rot_msg.header.stamp = rospy.Time.now()
-            # if yaw >= 180:
-            #     yaw = -360 + yaw
-            # while abs(yaw-np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation))) > tol:
-            #     print("1. ",yaw)
-            #     print("2. ",np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation)))
-            #     self.pub_position.publish(rot_msg)
-            self.pub_position.publish(rot_msg)
+    def rotate(self, goal_yaw, yawrate=30):
+        start_pose = self.current_pose
+        yawrate = abs(yawrate)
+
+        self.position_msg.x = start_pose.pose.position.x
+        self.position_msg.y = start_pose.pose.position.y
+        self.position_msg.z = start_pose.pose.position.z
+        self.position_msg.header.seq = 0
+
+        dt = 0.1
+        yaw_tol = dt*abs(yawrate)
+
+        yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        while not rospy.is_shutdown() and abs(np.mod((goal_yaw - np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation)) + 180), 360) - 180) > yaw_tol:
+            angular_diff = np.mod((goal_yaw - yaw + 180), 360) - 180
+            yaw += dt*yawrate*np.sign(angular_diff)
+            if abs(yaw) > 180:
+                yaw += -np.sign(yaw)*360
+            self.position_msg.yaw = yaw
+            self.position_msg.header.seq += 1
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.pub_position.publish(self.position_msg)
+            rospy.sleep(dt)
+        start = rospy.get_time()
+        while not rospy.is_shutdown():
+            now = rospy.get_time()
+            if (now - start > 2):
+                break
+            self.position_msg.yaw = goal_yaw
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.pub_position.publish(self.position_msg)
             self.rate.sleep()
-            count += 1
+
 
     def land(self):
-        position_msg = self.tf.position_msg(self.current_pose)#self.tf.transform2odom(self.current_pose)
+        start_pose = self.current_pose
+
+        self.position_msg.x = start_pose.pose.position.x
+        self.position_msg.y = start_pose.pose.position.y
+        self.position_msg.yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        self.position_msg.header.seq = 0
+
+        height = start_pose.pose.position.z
         landing_height = 0.1
-        position_msg.z = landing_height
-        while not self.current_pose.pose.position.z < landing_height:
-            self.pub_position.publish(position_msg)
-            self.rate.sleep()
+        tol = 0.05
+        vel = 0.3
+        dt = 0.1
+        while not rospy.is_shutdown() and (self.current_pose.pose.position.z - landing_height) > tol:
+            height_diff = landing_height - height
+            height += dt*vel*height_diff
+            self.position_msg.z = height
+            self.position_msg.header.seq += 1
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.pub_position.publish(self.position_msg)
+            rospy.sleep(dt)
         self.stop_pub.publish(self.stop_msg)
 
     def pose_callback(self, msg):
@@ -188,3 +192,44 @@ class Crazyflie:
         #self.current_pose = self.tf.transform2map(msg)
         self.current_pose = msg
 
+
+if __name__ == '__main__':
+    rospy.init_node('action', anonymous=True)
+
+    cf = Crazyflie("cf1")
+
+    while not rospy.is_shutdown() and cf.current_pose is None:
+        continue
+
+    cf.takeOff(0.5)
+
+    # yaw = np.degrees(cf.tf.quaternion2yaw(cf.current_pose.pose.orientation))
+    # for r in range(3):
+    #     yaw += 90
+    #     cf.rotate(yaw, 30)
+    goal = Position()
+    goal.x = cf.current_pose.pose.position.x + 1
+    goal.y = cf.current_pose.pose.position.y
+    goal.z = cf.current_pose.pose.position.z
+    cf.goTo(goal)
+
+    yaw = np.degrees(cf.tf.quaternion2yaw(cf.current_pose.pose.orientation))
+    cf.rotate(yaw+180,30)
+    goal.x = cf.current_pose.pose.position.x - 1
+    goal.y = cf.current_pose.pose.position.y
+    goal.z = cf.current_pose.pose.position.z
+    cf.goTo(goal)
+    cf.land()
+
+    # goal = Position()
+    # goal.x = 3.0
+    # goal.y = -1
+    # goal.z = 0.5
+    # goal.yaw = 0
+
+    # cf.goTo(goal)
+    # cf.rotate(-100, 30)
+
+    # goal.x = 1.5
+    # goal.y = -1
+    # cf.goTo(goal)
