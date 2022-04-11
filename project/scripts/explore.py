@@ -24,6 +24,7 @@ class Explore:
     def random_indices(self):
         N = 10
         rand_indices = np.empty(N, dtype=object)
+        np.random.seed(2022)
         for i in range(0, N):
             while True:
                 x_rand = np.random.randint(self.grid.dim[0])

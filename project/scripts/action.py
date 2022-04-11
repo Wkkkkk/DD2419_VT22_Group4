@@ -40,7 +40,7 @@ class Crazyflie:
         self.hover_timer = None
 
 
-    def goTo(self, goal, vel = 0.3):
+    def goTo(self, goal, vel = 0.2):
         start_pose = self.current_pose
 
         pos_tol = 0.05
@@ -107,8 +107,8 @@ class Crazyflie:
 
         height = start_pose.pose.position.z
         tol = 0.05
-        dt = 0.1
-        vel = 0.5
+        dt = 0.05
+        vel = 0.35
         while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
             height_diff = goal_height - height
             height += dt*vel*height_diff

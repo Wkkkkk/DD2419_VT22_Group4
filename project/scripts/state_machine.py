@@ -67,7 +67,7 @@ class StateMachine(object):
         next_pose = None
         #self.wait_for_pose()
         # Wait for localization to be initialized
-        # rospy.wait_for_message('is_initialized', Empty)
+        rospy.wait_for_message('is_initialized', Empty)
         rospy.loginfo("Taking off")
         while not rospy.is_shutdown():
 
@@ -109,7 +109,7 @@ class StateMachine(object):
                 yaw = np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation))
                 for r in range(3):
                     yaw += 90
-                    self.cf.rotate(yaw, 30)
+                    self.cf.rotate(yaw)
 
                 #self.cf.rotate()
                 self.state = State.GenerateExplorationGoal

@@ -19,7 +19,7 @@ class Planner:
         self.grid = grid
 
         #self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
-        self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=2)
+        self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=10)
 
         self.start, self.goal = self.initialize_planning(start_pose, goal_pose)
 
@@ -113,8 +113,8 @@ class Planner:
         if goal_found:
             rospy.loginfo("Successfully found a trajectory!")
             setpoints = self.get_setpoints()
-            path = self.path_publisher(setpoints)
-            return path
+            self.path_publisher(setpoints)
+            return setpoints
         else:
             rospy.loginfo("Could not find a trajectory!")
             return None
@@ -135,9 +135,10 @@ class Planner:
         return start, goal
 
     def path_publisher(self, setpoints):
+        setpoints = [self.tf.pose_stamped_msg(self.start.position, self.start.yaw)] + setpoints
         path = Path()
         path.poses = setpoints
         path.header.frame_id = 'map'
         path.header.stamp = rospy.Time.now()
+        # print(path)
         self.pub.publish(path)
-        return path

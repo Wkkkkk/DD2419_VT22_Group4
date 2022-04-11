@@ -75,7 +75,7 @@ class Transform:
 
     def position_msg(self, m):
         msg = Position()
-        msg.header.frame_id = 'map'
+        msg.header.frame_id = 'cf1/odom'
         msg.header.stamp = rospy.Time.now()
         msg.header.seq = 0
         msg.x = m.pose.position.x

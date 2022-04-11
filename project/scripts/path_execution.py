@@ -26,20 +26,20 @@ class PathExecution:
 
         self.rate = rospy.Rate(20)
 
-    def execute_path(self, path):
+    def execute_path(self, setpoints):
         tol_pos = 0.05
         tol_rot = 10
-        print("*************** New path ***************")
-        print("start pose: ",self.tf.position_msg(self.current_pose))
-        print("****************************************")
-        for setpoint in path.poses:
+        # print("*************** New path ***************")
+        # print("start pose: ",self.tf.position_msg(self.current_pose))
+        # print("****************************************")
+        for setpoint in setpoints:
             goal_pose = self.tf.transform2odom(setpoint)
             goal_pose.header.seq = 0
-            print(goal_pose)
-            print("****************************************")
+            # print(goal_pose)
+            # print("****************************************")
             if goal_pose:
-                if abs(np.mod((goal_pose.yaw - np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation)) + 180), 360) - 180) > tol_rot:
-                    self.cf.rotate(goal_pose.yaw, 50)
+                #if abs(np.mod((goal_pose.yaw - np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation)) + 180), 360) - 180) > tol_rot:
+                self.cf.rotate(goal_pose.yaw)
                 self.cf.goTo(goal_pose)
 
     def pose_callback(self, msg):
