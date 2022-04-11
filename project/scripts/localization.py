@@ -202,16 +202,13 @@ class Localization(object):
         markers = msg.markers
 
         for marker in markers: 
-            marker_id = self.data_association(marker)
+            #marker_id = self.data_association(marker)
+            marker_id = marker.id
             print("Find marker with id:", marker.id, " match it with:", marker_id)  
-            if not marker_id:  # No matched marker
-                continue
-            else:
-                rospy.loginfo("Find marker: %d", marker_id)
 
             # Find marker position in map frame
             m = self.tf_buffer.lookup_transform('map',
-                                                'aruco/marker{}'.format(marker_id),
+                                                'aruco/marker{}'.format(marker_id-1),
                                                 rospy.Time(),
                                                 rospy.Duration(3.0))
             # Find marker position in odom frame
