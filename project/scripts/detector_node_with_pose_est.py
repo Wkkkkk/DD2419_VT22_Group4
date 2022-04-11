@@ -27,6 +27,7 @@ from detector import Detector
 import os
 import numpy as np
 import time
+import math
 # from msg import Detected
 
 dir = os.path.abspath(os.getcwd())
@@ -75,7 +76,7 @@ def callback(Image):
    #   bbs = detector(detect_images)
    with torch.no_grad():
       out = detector(detect_images)
-      bbs = detector.decode_output(out, 0.9)
+      bbs = detector.decode_output(out, 0.85)
 
       # Uncomment this part to test if it publishes the tranform for detected sign
       #publish_detection(bbs, timestamp)
@@ -228,22 +229,22 @@ def pose_estimation(camera_image, bb_info):
 
    # Import the cannonical traffic sign based on detected class
    #base_img = cv2.imread(dir + "traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
-   base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
+   #base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
 
    # convert cannonical image to gray scale
-   base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
+   #base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
    
 
-   (h,w) = base_gray.shape[:2]
-   base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
-   base_gray = base_gray[150:base_gray.shape[0]-150, :]
+   #(h,w) = base_gray.shape[:2]
+   #base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
+   #base_gray = base_gray[150:base_gray.shape[0]-150, :]
 
    #TA BORT SENARE
-   (h,w) = base_gray.shape[:2]
-   base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
+   #(h,w) = base_gray.shape[:2]
+   #base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
 
    
-   b_height, b_width = base_gray.shape
+   b_height, b_width = refs[bb_info['category']]['height'], refs[bb_info['category']]['width']
    # Initiate SIFT detector
    sift = cv2.xfeatures2d.SIFT_create()
    #orb = cv2.ORB_create()
@@ -292,7 +293,7 @@ def pose_estimation(camera_image, bb_info):
    good = []
 
    for m,n in matches:
-      if m.distance < 0.55*n.distance:
+      if m.distance < 0.8*n.distance:
          good.append(m)
    matches = good
 
@@ -341,6 +342,8 @@ def pose_estimation(camera_image, bb_info):
       return
    if tvec[2] < 0: #outlier :))))))
       return
+   if math.isnan(rvec[0]) or math.isnan(rvec[0]) or math.isnan(rvec[0]):
+      return 
    #inliers = np.asarray(inliers).reshape(-1)
    #print(inliers)
    #EXTRA :)
@@ -348,12 +351,12 @@ def pose_estimation(camera_image, bb_info):
    #print(ke.pt)
    #keypoints_2d[0].pt = ke.pt
    #print(keypoints_2d[0].pt)
-   img_kp = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
-   img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+   #img_kp = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
+   #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
    #cv_gray = cv2.circle(cv_gray, (int(image_points[0][0]),int(image_points[0][1])), radius=0, color=(0, 0, 255), thickness=-1)
    #cv_gray = cv2.circle(cv_gray, (int(image_points[1][0]),int(image_points[1][1])), radius=0, color=(0, 0, 255), thickness=-1)
    #print(cv_gray.shape)
-   cv2.imwrite('test.png', img3)
+   #cv2.imwrite('test.png', img3)
    #cv2.imwrite('aaa.png', cv_gray)
    #time.sleep(7)
    #print("Printed!")
@@ -367,9 +370,12 @@ def pose_estimation(camera_image, bb_info):
    sign_pose.header.frame_id = Image_header.frame_id
    sign_pose.header.stamp = Image_header.stamp
    #print(tvec)
-   sign_pose.pose.position.x = tvec[2]
-   sign_pose.pose.position.y = -tvec[0]
-   sign_pose.pose.position.z = -tvec[1]
+   #sign_pose.pose.position.x = tvec[2]
+   #sign_pose.pose.position.y = -tvec[0]
+   #sign_pose.pose.position.z = -tvec[1]
+   sign_pose.pose.position.x = tvec[0]
+   sign_pose.pose.position.y = tvec[1]
+   sign_pose.pose.position.z = tvec[2]
    x, y, z, w = quaternion_from_euler(rvec[0], rvec[1], rvec[2])
    sign_pose.pose.orientation.x = x
    sign_pose.pose.orientation.y = y
@@ -381,41 +387,44 @@ def pose_estimation(camera_image, bb_info):
 
 # Does the transform and publishes the map to detected sign transfomr
 def publish_pose(sign_pose, id, category, confidence):
-   broadcaster = tf2_ros.TransformBroadcaster()
+   
    Detected_msg = Detection()
    DetectedArray_msg = DetectionArray()
    trans = TransformStamped()
 
    Detected_msg.header.frame_id = sign_pose.header.frame_id
-   trans.header.frame_id = 'map'
+   # trans.header.frame_id = 'map'
    Detected_msg.header.stamp = sign_pose.header.stamp
    trans.header.stamp = sign_pose.header.stamp
    
-   trans.header.frame_id = 'map'
+   trans.header.frame_id = 'cf1/camera_link'
+   # trans.header.frame_id = 'map'
    trans.child_frame_id = 'detector/detectedsign_' + category
    sign_pose.header.frame_id = "cf1/camera_link"
-      # marker pose is in frame camera_link
-   if not tf_buf.can_transform('map', 'cf1/camera_link', sign_pose.header.stamp, rospy.Duration(1)):
-      rospy.logwarn('pose_estimation: No transform from %s to map', sign_pose.header.frame_id)
-      print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
-      return
+   
+   #   # marker pose is in frame camera_link
+   #if not tf_buf.can_transform('map', 'cf1/camera_link', sign_pose.header.stamp, rospy.Duration(1)):
+   #   rospy.logwarn('pose_estimation: No transform from %s to map', sign_pose.header.frame_id)
+   #   print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
+   #   return
 
-   sign_transform = tf_buf.transform(sign_pose, 'map')
+   #sign_transform = tf_buf.transform(sign_pose, 'map')
+   Detected_msg.pose.header.frame_id = sign_pose.header.frame_id
    Detected_msg.pose.pose.position.x = sign_pose.pose.position.x
    Detected_msg.pose.pose.position.y = sign_pose.pose.position.y
    Detected_msg.pose.pose.position.z = sign_pose.pose.position.z
-   trans.transform.translation.x = sign_transform.pose.position.x
-   trans.transform.translation.y = sign_transform.pose.position.y
-   trans.transform.translation.z = sign_transform.pose.position.z
+   trans.transform.translation.x = sign_pose.pose.position.x
+   trans.transform.translation.y = sign_pose.pose.position.y
+   trans.transform.translation.z = sign_pose.pose.position.z
 
    Detected_msg.pose.pose.orientation.x = sign_pose.pose.orientation.x
    Detected_msg.pose.pose.orientation.y = sign_pose.pose.orientation.y
    Detected_msg.pose.pose.orientation.z = sign_pose.pose.orientation.z
    Detected_msg.pose.pose.orientation.w = sign_pose.pose.orientation.w
-   trans.transform.rotation.x = sign_transform.pose.orientation.x
-   trans.transform.rotation.y = sign_transform.pose.orientation.y
-   trans.transform.rotation.z = sign_transform.pose.orientation.z
-   trans.transform.rotation.w = sign_transform.pose.orientation.w
+   trans.transform.rotation.x = sign_pose.pose.orientation.x
+   trans.transform.rotation.y = sign_pose.pose.orientation.y
+   trans.transform.rotation.z = sign_pose.pose.orientation.z
+   trans.transform.rotation.w = sign_pose.pose.orientation.w
 
    broadcaster.sendTransform(trans)
    #Publish message
@@ -427,14 +436,16 @@ def publish_pose(sign_pose, id, category, confidence):
 # Init node
 rospy.init_node('detect_node')
 # Init publisher
-image_pub = rospy.Publisher("/bbox", Image, queue_size=20)
-detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=2)
+image_pub = rospy.Publisher("/bbox", Image, queue_size=1)
+detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=5)
 
 # Init TF
 tf_buf   = tf2_ros.Buffer()
 tf_listner  = tf2_ros.TransformListener(tf_buf)
+broadcaster = tf2_ros.TransformBroadcaster()
 
 # Init detector with trained weights and set to evaluation mode
+is_rocm_pytorch = True
 device = torch.device('cpu')
 detector = Detector().to(device)
 #dataloader = utils.load_model(detector, "/home/miguelclemente/dd2419_ws/src/part3/scripts/det_2022-02-20_19-48-10-524174.pt" , device)
@@ -478,7 +489,7 @@ def caminfo(caminfo_msg):
    distortion_parameters = caminfo_msg.D
 
 def main():
-   image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback)
+   image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback, queue_size = 1)
    rospy.spin()
 
 

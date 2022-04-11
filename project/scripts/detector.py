@@ -19,6 +19,7 @@ from random import randint, randrange
 
 NUM_CATEGORIES = 15
 
+is_rocm_pytorch = True
 
 class Detector(nn.Module):
     """Baseline module for object detection."""

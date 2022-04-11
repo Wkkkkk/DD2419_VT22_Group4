@@ -107,8 +107,8 @@ class Crazyflie:
 
         height = start_pose.pose.position.z
         tol = 0.05
-        dt = 0.05
-        vel = 0.35
+        dt = 0.2
+        vel = 0.5
         while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
             height_diff = goal_height - height
             height += dt*vel*height_diff
@@ -130,7 +130,7 @@ class Crazyflie:
 
 
     # rotate itself
-    def rotate(self, goal_yaw, yawrate=30):
+    def rotate(self, goal_yaw, yawrate=25):
         start_pose = self.current_pose
         yawrate = abs(yawrate)
 
@@ -156,7 +156,7 @@ class Crazyflie:
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
-            if (now - start > 2):
+            if (now - start > 3):
                 break
             self.position_msg.yaw = goal_yaw
             self.position_msg.header.stamp = rospy.Time.now()

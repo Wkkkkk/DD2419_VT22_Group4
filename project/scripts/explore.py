@@ -12,7 +12,7 @@ class Explore:
     def __init__(self, grid, current_pose):
         self.grid = grid
         self.e_map = grid.reset_exploration_map()
-        self.range = int(0.5/self.grid.resolution)
+        self.range = int(0.4/self.grid.resolution)
 
         current_position = np.array([current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z])
         self.current_index = self.grid.convert_to_index(current_position)
@@ -22,9 +22,9 @@ class Explore:
         self.tf = Transform()
 
     def random_indices(self):
-        N = 10
+        N = 20
         rand_indices = np.empty(N, dtype=object)
-        np.random.seed(2022)
+        np.random.seed(2020)
         for i in range(0, N):
             while True:
                 x_rand = np.random.randint(self.grid.dim[0])
@@ -97,7 +97,7 @@ class Explore:
                 found_point = True
             count += 1
 
-        if found_point and max_score > 2.5/self.grid.resolution:
+        if found_point and max_score > 1.0/self.grid.resolution:
             for index in explored_cells:
                 self.e_map[index[0]][index[1]] = 0
             yaw = np.random.uniform(-pi, pi)

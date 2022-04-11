@@ -10,7 +10,7 @@
   <node name="localization"  pkg="project" type="localization.py" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
   <node name="base_footprint" pkg="project" type="footprint.py" />
 
-<!--   <node name="trafic_sign_detector" pkg="project" type="detector_node_with_pose_est.py" output="screen" />
+  <node name="trafic_sign_detector" pkg="project" type="detector_node_with_pose_est.py" />
   <node name="intruder_detector" pkg="project" type="intruder_detection.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
- -->
+
 </launch>
