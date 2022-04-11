@@ -32,10 +32,6 @@ class Planner:
                                         if ((0 <= i <= X) and (0 <= j <= Y) and not (i == x and j == y)
                                             and self.grid[(i, j)] != self.grid.occupied_space)]
 
-    # def pose_callback(self, msg):
-    #     """ Retrieves the current pose of the drone in odom frame."""
-    #     self.current_pose = self.tf.transform2map(msg)
-
     def compute_cost(self, node):
         if node.parent is self.start:
             node.cost2come = np.linalg.norm(node.position - node.parent.position)
@@ -56,6 +52,7 @@ class Planner:
     def get_setpoints(self):
         tol = 10
         setpoints = []
+        #setpoints.append(self.tf.pose_stamped_msg(self.goal.position, self.goal.yaw))
         goal = self.tf.pose_stamped_msg(self.goal.position, self.goal.yaw)
         node = self.goal
         while node is not self.start:
@@ -67,13 +64,13 @@ class Planner:
                     break
                 q = q.parent
             p = node.parent
-            p.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
-            yaw_diff = abs(np.degrees(p.yaw) - np.degrees(node.yaw))
-            if yaw_diff > tol and yaw_diff < 360-tol:
-               setpoints.append(self.tf.pose_stamped_msg(node.position, p.yaw))
-
+            node.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
+            # yaw_diff = abs(np.degrees(p.yaw) - np.degrees(node.yaw))
+            # if yaw_diff > tol and yaw_diff < 360-tol:
+            #    setpoints.append(self.tf.pose_stamped_msg(node.position, p.yaw))
+            setpoints.append(self.tf.pose_stamped_msg(node.position, node.yaw))
             p.position[2] = self.start.position[2]
-            setpoints.append(self.tf.pose_stamped_msg(p.position, p.yaw))
+            #setpoints.append(self.tf.pose_stamped_msg(p.position, p.yaw))
             node = p
         setpoints.reverse()
         return setpoints
@@ -123,11 +120,6 @@ class Planner:
             return None
 
     def initialize_planning(self, start_pose,  goal_pose):
-        # while not self.current_pose:
-        #     # rospy.loginfo("Waiting for current pose to be initialized")
-        #     continue
-
-        # start_pose = self.current_pose
 
         start_yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         start_pos = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
@@ -149,22 +141,3 @@ class Planner:
         path.header.stamp = rospy.Time.now()
         self.pub.publish(path)
         return path
-
-
-"""
-def main(argv=sys.argv):
-    args = rospy.myargv(argv=argv)
-    with open(args[1], 'rb') as f:
-        world = json.load(f)
-    #while not rospy.is_shutdown():
-    goal_pose = tr.pose_stamped_msg(np.array([0.0, 2.3, 0.5]), 0.0)
-    A = Planner(goal_pose, world)
-    A.run()
-if __name__ == "__main__":
-    rospy.init_node('path_planner')
-    rospy.Subscriber('/cf1/pose', PoseStamped, pose_callback)
-    pub = rospy.Publisher('/planner/path', Path, queue_size=2)
-    current_pose = None
-    main()
-    rospy.spin()
-"""
