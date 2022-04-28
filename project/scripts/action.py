@@ -33,7 +33,7 @@ class Crazyflie:
         self.hover_timer = None
 
 
-    def goTo(self, goal, vel = 0.3):
+    def goTo(self, goal, vel = 0.25):
         """ Action to make drone fly straight to a set point at a velocity determined by vel """
         start_pose = self.current_pose
 
@@ -106,7 +106,7 @@ class Crazyflie:
 
         height = start_pose.pose.position.z
         tol = 0.05
-        dt = 0.3
+        dt = 0.2
         vel = 0.5
         while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
             """ Calculates the next height at dt seconds later """
@@ -131,7 +131,7 @@ class Crazyflie:
             self.pub_position.publish(self.position_msg)
             self.rate.sleep()
 
-    def rotate(self, goal_yaw, yawrate=35):
+    def rotate(self, goal_yaw, yawrate=30):
         """ Rotate the drone to a desired yaw at a rate determined by yawrate """
         start_pose = self.current_pose
         yawrate = abs(yawrate)

@@ -15,7 +15,4 @@
 
   <node name="state_machine" pkg="project" type="state_machine.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
 
-<!--   <node name="trafic_sign_detector" pkg="project" type="detector_node_with_pose_est.py" />
-  <node name="intruder_detector" pkg="project" type="intruder_detection.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
- -->
 </launch>

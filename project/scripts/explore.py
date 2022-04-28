@@ -149,7 +149,7 @@ class Explore:
 
             self.mode = self.localization_mode
             print("********** Random mode **********")
-            if valid_goal and max_score > 2.5 / self.grid.resolution:
+            if valid_goal and max_score > 1 / self.grid.resolution:
                 for index in explored_cells:
                     self.e_map[index[0]][index[1]] = 0
                 next_pose = self.tf.pose_stamped_msg(max_pose.position, max_pose.yaw)

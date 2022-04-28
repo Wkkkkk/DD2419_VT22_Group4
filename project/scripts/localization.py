@@ -250,6 +250,7 @@ class Localization(object):
             if not self.tf_buffer.can_transform('map', 'world/roadsign_' + sign_category, rospy.Time(), rospy.Duration(3.0)):
                 print("Can't find sign in the world", sign_category)
                 continue
+            pass
 
             # Find sign position in map frame
             m = self.tf_buffer.lookup_transform('map',

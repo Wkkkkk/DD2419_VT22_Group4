@@ -98,6 +98,7 @@ class StateMachine(object):
                 yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
                 for r in range(3):
                     yaw += 90
+                    yaw = np.mod((yaw + 180), 360) - 180
                     self.cf.rotate(yaw)
 
                 # self.cf.rotate()
