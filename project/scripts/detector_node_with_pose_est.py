@@ -8,7 +8,6 @@ from sys import flags
 from types import NoneType
 from PIL import Image
 import cv2
-from jsonschema import RefResolver
 from matplotlib import image
 from pytz import InvalidTimeError
 from cv_bridge import CvBridge, CvBridgeError
@@ -32,8 +31,8 @@ import math
 
 dir = os.path.abspath(os.getcwd())
 
-categories = {0: "no_bicycle", 1: "airport", 2: "dangerous_left",
-                3: "dangerous_right", 4: "follow_left",
+categories = {0: "no_bicycle", 1: "airport", 2: "dangerous_curve_left",
+                3: "dangerous_curve_right", 4: "follow_left",
                 5: "follow_right", 6: "junction", 7: "no_heavy_truck",
                 8: "no_parking", 9: "no_stopping_and_parking",
                 10: "residential", 11: "narrows_from_left",
@@ -86,7 +85,8 @@ def callback(Image):
     #   bbs = detector(detect_images)
     with torch.no_grad():
         out = detector(detect_images)
-        bbs = detector.decode_output(out, 0.85)
+        bbs = detector.decode_output(out, 0.95)
+
 
         # Uncomment this part to test if it publishes the tranform for detected sign
         #publish_detection(bbs, timestamp)
@@ -103,7 +103,7 @@ def reference_features():
 
     # structure {name1: {kp1:(), des1:()}, name2: {kp2:(), des2:()}}
     ref = {}
-    file_name = {0: "no_bicycle", 1: "airport" , 2: "dangerous_left", 3: "dangerous_right", 4: "follow_left",
+    file_name = {0: "no_bicycle", 1: "airport" , 2: "dangerous_curve_left", 3: "dangerous_curve_right", 4: "follow_left",
                 5: "follow_right", 6: "junction", 7: "no_heavy_truck", 8: "no_parking", 9:"no_stopping_and_parking",
                 10: "residential", 11: "narrows_from_left", 12: "narrows_from_right", 13: "roundabout", 14: "stop"}
 
@@ -112,7 +112,7 @@ def reference_features():
         sign_file_name = file_name[i]
         sign_name = categories[i]
 
-        base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + sign_file_name  + ".jpg", cv2.IMREAD_COLOR)
+        base_img = cv2.imread("/home/clemente/dd2419_ws/src/project/scripts/traffic_signs/" + sign_file_name  + ".jpg", cv2.IMREAD_COLOR)
         # convert cannonical image to gray scale
         base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
 
@@ -123,10 +123,9 @@ def reference_features():
 
         #TA BORT SENARE
         (h,w) = base_gray.shape[:2]
-        base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
+        base_gray = cv2.resize(base_gray, (int(w), int(h)))
 
         b_height, b_width = base_gray.shape
-
         kp, des = sift.detectAndCompute(base_gray, None)
 
         ref[sign_name] = {'kp': kp, 'des': des, 'width': b_width, 'height': b_height}
@@ -153,10 +152,10 @@ def bounding_box(detections, cv_image):
     # Pick box with highest confidance
     if len(detections[0]) != 0:
         bb = max(detections[0], key=lambda j:j["score"])
-        x = int(bb['x'])
-        y = int(bb['y'])
-        width = int(bb['width'])
-        height = int(bb['height'])
+        x = int(bb['x']) - 20
+        y = int(bb['y']) - 20
+        width = int(bb['width']) + 20
+        height = int(bb['height']) + 20
         classification = categories[bb['category']]
 
         bb_info = {'x': x, 'y': y, 'width': width, 'height': height, 'category': classification, 'id': bb['category'], 'confidence': bb["score"]}
@@ -198,10 +197,14 @@ def keypoints_for_estimation(matches, kp_object, kp_image):
 def object_keypoint_to_3d(object_keypoints, image_width, image_height):
     """ Utility function to transform the keypoints into 3D points for pose estimation """
     object_points = []
-    real_width = 0.21
-    real_height = 0.297
+    real_width = 0.2
+    real_height = 0.2
     for i in object_keypoints:
-        object_points.append((i.pt[0]*(real_width/image_width), i.pt[1]*(real_height/image_height), 0))
+        #111object_points.append(((i.pt[0]-image_width/2)*(real_width/image_width), (i.pt[1]-image_height/2)*(real_height/image_height), 0))
+        object_points.append((-(i.pt[1] - image_height/2)*(real_width/image_width), 0, (i.pt[0]-image_width/2)*(real_height/image_height)))
+
+        #object_points.append((0, -i.pt[0]*(real_width/image_width), -i.pt[1]*(real_height/image_height)))
+
     return np.array(object_points)
 
 
@@ -228,7 +231,7 @@ def pose_estimation(camera_image, bb_info):
     y = bb_info['y']
     width = bb_info['width']
     height = bb_info['height']
-
+    rospy.loginfo(bb_info['id'])
     #???????????????????????????
     if currentid != bb_info['id']:
         tvec[0] = 0
@@ -240,7 +243,7 @@ def pose_estimation(camera_image, bb_info):
 
     # Import the cannonical traffic sign based on detected class
     #base_img = cv2.imread(dir + "traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
-    #base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
+    #base_img = cv2.imread("/home/clemente/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
 
     # convert cannonical image to gray scale
     #base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
@@ -305,7 +308,7 @@ def pose_estimation(camera_image, bb_info):
 
     # Find closest matches
     for m,n in matches:
-        if m.distance < 0.8*n.distance:
+        if m.distance < 0.6*n.distance:
             good.append(m)
     matches = good
 
@@ -330,6 +333,10 @@ def pose_estimation(camera_image, bb_info):
     #print(image_points[0])
     #print(keypoints_2d[0].pt)
     # Find rotation and translation vectors for pose estimation
+    #img3 = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
+
+    #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    #cv2.imwrite('aaaaaaaaaaaaaaa.jpg', img3)
     print("Matches: ", len(matches), "Min Distance; ", matches[0].distance)
     if len(matches) < 4:
         return
@@ -347,16 +354,24 @@ def pose_estimation(camera_image, bb_info):
     #b = np.ascontiguousarray(b, dtype=np.uint8)
 
     if tvec[0] == 0:
-        retval, rvec, tvec = cv2.solvePnP(object_points[:4], image_points[:4], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
-    else:
-        retval, rvec, tvec = cv2.solvePnP(object_points[:4], image_points[:4], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
+        retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
 
+    #else:
+     #   retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
+    retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
+
+    rvec[2] = 0
+    rvec[0] = -math.pi/2
     if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 2:# or type(inliers) == NoneType:
+        tvec[0] = 0
         return
     if tvec[2] < 0: #outlier :))))))
+        tvec[0] = 0
         return
     if math.isnan(rvec[0]) or math.isnan(rvec[0]) or math.isnan(rvec[0]):
+        tvec[0] = 0
         return
+    #rvec[2] = 0
 
     #inliers = np.asarray(inliers).reshape(-1)
     #print(inliers)
@@ -366,11 +381,11 @@ def pose_estimation(camera_image, bb_info):
     #keypoints_2d[0].pt = ke.pt
     #print(keypoints_2d[0].pt)
     #img_kp = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
-    #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+
     #cv_gray = cv2.circle(cv_gray, (int(image_points[0][0]),int(image_points[0][1])), radius=0, color=(0, 0, 255), thickness=-1)
     #cv_gray = cv2.circle(cv_gray, (int(image_points[1][0]),int(image_points[1][1])), radius=0, color=(0, 0, 255), thickness=-1)
     #print(cv_gray.shape)
-    #cv2.imwrite('test.png', img3)
     #cv2.imwrite('aaa.png', cv_gray)
     #time.sleep(7)
     #print("Printed!")
@@ -397,9 +412,10 @@ def pose_estimation(camera_image, bb_info):
     sign_pose.pose.orientation.w = w
 
     publish_pose(sign_pose, bb_info['id'], bb_info["category"], bb_info["confidence"])
+    rospy.loginfo("Publishiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiing!")
 
 
-def publish_pose(sign_pose, id, category, confidence):
+def publish_pose(sign_pose, sign_id, category, confidence):
     """ Creates the Transform from camera link to the detected sign and publishes to tf. Also
         creates a Detected_msg and DetectedArray_msg to post the pose for localization. """
 
@@ -443,7 +459,7 @@ def publish_pose(sign_pose, id, category, confidence):
 
     broadcaster.sendTransform(trans)
     #Publish message
-    Detected_msg.id  = id
+    Detected_msg.id  = sign_id
     Detected_msg.confidence = confidence
     DetectedArray_msg.detections = [Detected_msg]
 
@@ -458,8 +474,8 @@ rospy.init_node('detect_node')
 
 # Init publisher
 image_pub = rospy.Publisher("/bbox", Image, queue_size=1)
-detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=1)
-intruder_det_pub = rospy.Publisher("/intruder_detection_sign", DetectionArray, queue_size=1)
+detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=10)
+intruder_det_pub = rospy.Publisher("/intruder_detection_sign", DetectionArray, queue_size=10)
 
 # Init TF
 tf_buf   = tf2_ros.Buffer()
@@ -468,11 +484,11 @@ broadcaster = tf2_ros.TransformBroadcaster()
 
 # Init detector with trained weights and set to evaluation mode
 is_rocm_pytorch = True
-device = torch.device('cpu')
+device = torch.device('cuda')
 detector = Detector().to(device)
 #dataloader = utils.load_model(detector, "/home/miguelclemente/dd2419_ws/src/part3/scripts/det_2022-02-20_19-48-10-524174.pt" , device)
 #path = dir + "/scripts/det_2022-02-20_19-48-10-524174.pt"
-path = "/home/maciejw/dd2419_ws/src/project/scripts/det_2022-04-01_10-48-59-587336.pt"
+path = "/home/clemente/dd2419_ws/src/project/scripts/det_2022-04-01_10-48-59-587336.pt"
 dataloader = utils.load_model(detector, path, device)
 refs = reference_features()
 detector.eval()
@@ -514,7 +530,7 @@ def caminfo(caminfo_msg):
 
 def main():
     image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback,
-                                 queue_size=1)
+                                 queue_size=1, buff_size=2**24)
     rospy.spin()
 
 

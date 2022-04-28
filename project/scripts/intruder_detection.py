@@ -34,11 +34,12 @@ class intruder_detection:
 
         # self.world = json.load(f)
 
-        self.categories = {0:"no_bicycle", 1:"airport" , 2: "dangerous_left", 3:"dangerous_right", 4: "follow_left",
+        self.categories = {0:"no_bicycle", 1:"airport" , 2: "dangerous_curve_left", 3:"dangerous_curve_right", 4: "follow_left",
                      5:"follow_right", 6:"junction", 7:"no_heavy_truck", 8:"no_parking", 9:"no_stopping_and_parking",
                      10:"residential", 11:"narrows_from_left", 12:"narrows_from_right", 13:"roundabout", 14:"stop"}
 
         self.signs_in_world = self.signs_in_world()
+        print(self.signs_in_world)
 
         # Init TF
         self.tf_buf   = tf2_ros.Buffer()
@@ -47,7 +48,7 @@ class intruder_detection:
 
         rospy.sleep(1)
 
-        self.detected_sub = rospy.Subscriber("/intruder_detection_sign", DetectionArray, self.callback, queue_size = 1)
+        self.detected_sub = rospy.Subscriber("/intruder_detection_sign", DetectionArray, self.callback, queue_size = 10)
         self.intruder_pub = rospy.Publisher("/intruder_topic", String, queue_size = 2)
         # self.intruder_pose_pub = rospy.Publisher("/intruder_topic", String, queue_size = 10)
 
