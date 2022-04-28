@@ -6,9 +6,9 @@ from node import Node
 from tf.transformations import euler_matrix
 
 class GridMap:
-    def __init__(self, safety_radius, world):
+    def __init__(self, safety_radius, world, height):
         self.bounds = [np.array(world['airspace']["min"]), np.array(world['airspace']["max"])]
-
+        self.height = height
         self.resolution = (self.bounds[1][0] - self.bounds[0][0])/30
 
         self.dim = ((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
@@ -67,7 +67,7 @@ class GridMap:
             for y in range(0, self.dim[1]):
                 if map[x][y] != self.occupied_space and map[x][y] != self.c_space:
                     index = np.array([x, y])
-                    map[x][y] = Node(index, None, self.index_to_world(index, 0.4))
+                    map[x][y] = Node(index, None, self.index_to_world(index, self.height))
         return map, explore_map
 
     def raytrace(self, start, end, returnList=False):
@@ -160,7 +160,7 @@ class GridMap:
             for y in range(y_min, y_max+1):
                 if self.is_free_space([x, y]):
                     index = np.array([x, y])
-                    pos = self.index_to_world(index, 0.4)
+                    pos = self.index_to_world(index, self.height)
                     node = Node(index, None, pos, yaw)
                     poses.append(node)
 

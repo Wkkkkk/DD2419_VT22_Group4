@@ -11,11 +11,17 @@ import numpy as np
 from tf.transformations import quaternion_from_matrix, quaternion_matrix, euler_from_quaternion, quaternion_from_euler
 from std_msgs.msg import Empty
 from geometry_msgs.msg import Pose, PoseStamped, TransformStamped, Vector3
+from project.msg import Detection, DetectionArray
 from aruco_msgs.msg import MarkerArray
 import networkx as nx
 
-from detector_node_with_pose_est import categories
-
+# from detector_node_with_pose_est import categories
+categories = {0: "no_bicycle", 1: "airport", 2: "dangerous_left",
+                3: "dangerous_right", 4: "follow_left",
+                5: "follow_right", 6: "junction", 7: "no_heavy_truck",
+                8: "no_parking", 9: "no_stopping_and_parking",
+                10: "residential", 11: "narrows_from_left",
+                12: "narrows_from_right", 13: "roundabout", 14: "stop"}
 
 def pose_from_transform(t):
     """Convert a C{geometry_msgs/TransformStamped} into Pose
@@ -321,6 +327,7 @@ def main(argv=sys.argv):
     # Let ROS filter through the arguments
     args = rospy.myargv(argv=argv)
 
+    print("Start localization")
     # Load world JSON
     with open(args[1], 'rb') as f:
         world = json.load(f)
@@ -345,4 +352,5 @@ def main(argv=sys.argv):
 
 
 if __name__ == "__main__":
+    print("?????")
     main()

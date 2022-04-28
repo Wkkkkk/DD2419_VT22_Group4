@@ -33,7 +33,9 @@ class StateMachine(object):
         with open(args[1], 'rb') as f:
             world = json.load(f)
 
-        self.grid = GridMap(0.2, world)
+        self.height = 0.4
+
+        self.grid = GridMap(0.2, world, self.height)
         self.path_executer = PathExecution()
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
@@ -51,8 +53,6 @@ class StateMachine(object):
 
         self.tol = 0.05
         self.rate = rospy.Rate(10)
-
-        self.height = 0.5
 
         # Initialize state machine
         self.state = State.Init
@@ -95,7 +95,7 @@ class StateMachine(object):
             # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
                 rospy.loginfo("Checks for intruders")
-                yaw = np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation))
+                yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
                 for r in range(3):
                     yaw += 90
                     self.cf.rotate(yaw)

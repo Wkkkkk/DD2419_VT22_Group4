@@ -10,7 +10,6 @@ from geometry_msgs.msg import PoseStamped, Point
 
 class Crazyflie:
     def __init__(self, prefix="cf1"):
-        self.height = 0.4  # Height at which the drone should fly at
 
         self.prefix = prefix
         self.tf = Transform()
@@ -34,7 +33,7 @@ class Crazyflie:
         self.hover_timer = None
 
 
-    def goTo(self, goal, vel = 0.2):
+    def goTo(self, goal, vel = 0.3):
         """ Action to make drone fly straight to a set point at a velocity determined by vel """
         start_pose = self.current_pose
 
@@ -63,6 +62,8 @@ class Crazyflie:
 
             rospy.sleep(dt)
 
+        print("Arrived at goal, with yaw:", goal.yaw)
+        print("Actual yaw:", self.tf.quaternion2yaw(self.current_pose.pose.orientation))
         """ Hover for a while """
         start = rospy.get_time()
         while not rospy.is_shutdown():
@@ -105,7 +106,7 @@ class Crazyflie:
 
         height = start_pose.pose.position.z
         tol = 0.05
-        dt = 0.2
+        dt = 0.3
         vel = 0.5
         while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
             """ Calculates the next height at dt seconds later """
@@ -130,7 +131,7 @@ class Crazyflie:
             self.pub_position.publish(self.position_msg)
             self.rate.sleep()
 
-    def rotate(self, goal_yaw, yawrate=30):
+    def rotate(self, goal_yaw, yawrate=35):
         """ Rotate the drone to a desired yaw at a rate determined by yawrate """
         start_pose = self.current_pose
         yawrate = abs(yawrate)
@@ -142,7 +143,7 @@ class Crazyflie:
 
         dt = 0.1
         yaw_tol = dt*abs(yawrate)  # tolerance based on publishing rate and yaw rate
-
+        print("goal yaw: ",goal_yaw)
         yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         while not rospy.is_shutdown() and self.yaw_difference(goal_yaw, yaw) > yaw_tol:
             """ Calculates the next yaw at dt seconds later """
@@ -159,6 +160,7 @@ class Crazyflie:
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
+            print("yaw: ",yaw)
 
             rospy.sleep(dt)
 
@@ -166,7 +168,7 @@ class Crazyflie:
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
-            if now - start > 3:
+            if now - start > 2:
                 break
             self.position_msg.yaw = goal_yaw
             self.position_msg.header.stamp = rospy.Time.now()
@@ -204,9 +206,11 @@ class Crazyflie:
 
         self.stop_pub.publish(self.stop_msg)  # Stop rotors
 
-    def yaw_difference(self, goal_yaw, yaw):
+    def yaw_difference(self, goal_yaw, yaw=None):
         """ Calculates difference between current yaw and goal yaw """
-        #current_yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
+        if yaw is None:
+            yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
+
         return abs(np.mod((goal_yaw - yaw + 180), 360) - 180)
 
     def pose_callback(self, msg):
@@ -240,6 +244,7 @@ if __name__ == '__main__':
     goal.y = cf.current_pose.pose.position.y
     goal.z = cf.current_pose.pose.position.z
     cf.goTo(goal)
+    print("Ready to land")
     cf.land()
 
     # goal = Position()

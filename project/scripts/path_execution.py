@@ -40,3 +40,5 @@ class PathExecution:
                 """ Fly straight to position of set point """
                 self.cf.goTo(goal_pose)
                 print("yaw: ", goal_pose.yaw)
+
+                

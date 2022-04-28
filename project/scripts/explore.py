@@ -14,7 +14,7 @@ class Explore:
         self.grid = grid
         self.loc_clusters = self.grid.loc_clusters
         self.e_map = grid.reset_exploration_map()
-        self.range = int(0.4/self.grid.resolution)
+        self.range = int(0.5/self.grid.resolution)
 
         self.exploration_mode = 10
         self.localization_mode = 20
