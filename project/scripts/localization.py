@@ -120,21 +120,17 @@ class KalmanFilter:
         self.is_initialized = False
 
         # initial state (location and velocity)
-        self.mu = np.zeros((6, 1))  # [x, y, theta, x', y', theta']
-
+        self.mu = np.zeros((3, 1))  # [x, y, theta]
         # initial uncertainty: 0 for positions x and y, 1000 for the two velocities
-        self.P = np.zeros((6,6))
-        self.P[3, 3] = self.P[4, 4] = self.P[5, 5] = 1000
+        self.P = np.eye(3)*0.1
         # state transition matrix: generalize the 2d version to 4d
-        self.F = np.eye(6)
-        self.F[0,3] = self.F[1,4] = self.F[2,5] = 0.5
+        self.F = np.eye(3)
         # measurement matrix: reflect the fact that we observe x and y but not the two velocities
-        self.H = np.zeros((3, 6))
-        self.H[0, 0] = self.H[1, 1] = self.H[2, 2] = 1
-        # measurement uncertainty: use 2x2 matrix with 0.1 as main diagonal
-        self.R = np.eye(3) * 100
-        self.Q = np.eye(6) * 0.01
-        self.I = np.eye(6)
+        self.H = np.eye(3)
+        # measurement uncertainty
+        self.R = np.eye(3) * 0.1
+        # transition uncertainty
+        self.Q = np.eye(3) * 0.01
 
 
     def update(self, msg):
@@ -163,7 +159,7 @@ class KalmanFilter:
 
         # Posterier mu and sigma
         self.mu = self.mu + np.dot(K, y)
-        self.P = np.dot((self.I - np.dot(K, self.H)), self.P)
+        self.P = np.dot((np.eye(3) - np.dot(K, self.H)), self.P)
 
         # Output 
         msg.transform.translation.x = self.mu[0]
