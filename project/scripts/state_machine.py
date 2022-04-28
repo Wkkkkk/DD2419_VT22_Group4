@@ -5,12 +5,7 @@ import json
 import rospy
 import numpy as np
 
-import tf2_ros
-from std_msgs.msg import String
-import tf2_geometry_msgs
-
 from geometry_msgs.msg import PoseStamped
-from crazyflie_driver.msg import Position
 from std_msgs.msg import Empty, Bool
 import enum
 from grid_map import GridMap
@@ -43,7 +38,8 @@ class StateMachine(object):
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
 
-        self.current_pose = None 
+        self.next_pose = None
+        self.current_pose = None
 
         # Subscribe to topics
         self.sub_pose = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
@@ -51,10 +47,11 @@ class StateMachine(object):
         self.wait_for_pose()
         self.start_pose = self.tf.transform2map(self.current_pose)
         self.explore = Explore(self.grid, self.start_pose)
+        self.path_planner = Planner(self.grid)
 
         self.tol = 0.05
         self.rate = rospy.Rate(10)
-        
+
         self.height = 0.5
 
         # Initialize state machine
@@ -64,29 +61,22 @@ class StateMachine(object):
         self.states()
 
     def states(self):
-        next_pose = None
-        #self.wait_for_pose()
         # Wait for localization to be initialized
-        # rospy.wait_for_message('is_initialized', Empty)
+        rospy.wait_for_message('is_initialized', Empty)
         rospy.loginfo("Taking off")
         while not rospy.is_shutdown():
 
             # State 1: lift off and hover
             if self.state == State.Init:
-                #self.cf.takeOff(self.start_pose, self.height)
                 self.cf.takeOff(self.height)
                 self.state = State.RotateAndSearchForIntruder
-                # if self.tol > abs(self.current_pose.pose.position.z - self.height):
-                #     #self.cf.start_hovering()
-                #     self.state = State.RotateAndSearchForIntruder
-                #     # self.state = State.GenerateExplorationGoal
 
             # State 2: Generate next exploration goal from explorer
             if self.state == State.GenerateExplorationGoal:
                 rospy.loginfo("Generating the next exploration goal")
                 self.start_pose = self.tf.transform2map(self.current_pose)
-                next_pose = self.explore.next_goal(self.start_pose)
-                if next_pose is None:
+                self.next_pose = self.explore.next_goal(self.start_pose)
+                if self.next_pose is None:
                     self.state = State.Landing
                 else:
                     self.state = State.GoToExplorationGoal
@@ -94,8 +84,7 @@ class StateMachine(object):
             # State 3: Generate path to next exploration goal and execute it
             if self.state == State.GoToExplorationGoal:
                 rospy.loginfo("Go to next goal")
-                A = Planner(self.start_pose, next_pose, self.grid)
-                path = A.run()
+                path = self.path_planner.run(self.start_pose, self.next_pose)
                 if path is None:
                     self.state = State.GenerateExplorationGoal
                     continue
@@ -109,9 +98,9 @@ class StateMachine(object):
                 yaw = np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation))
                 for r in range(3):
                     yaw += 90
-                    self.cf.rotate(yaw, 30)
+                    self.cf.rotate(yaw)
 
-                #self.cf.rotate()
+                # self.cf.rotate()
                 self.state = State.GenerateExplorationGoal
                 self.cf.start_hovering()
 

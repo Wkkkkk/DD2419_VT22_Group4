@@ -6,11 +6,11 @@ from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from geometry_msgs.msg import PoseStamped
 from crazyflie_driver.msg import Position
 import rospy
-from math import *
 import numpy as np
 
 
 class Transform:
+    """ Class used to do all sorts of transforms required for the mission planning """
     def __init__(self):
         self.tf_buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tf_buffer)
@@ -29,6 +29,7 @@ class Transform:
         return goal_map
 
     def transform2odom(self, m):
+        """ Transforms the drone pose from map frame to odom frame """
         timeout = rospy.Duration(0.5)
         if not self.tf_buffer.can_transform(m.header.frame_id, 'cf1/odom', m.header.stamp, timeout):
             rospy.logwarn_throttle(5.0, 'No transform from %s to cf1/odom' % m.header.frame_id)
@@ -46,19 +47,21 @@ class Transform:
                                                   goal_odom.pose.orientation.y,
                                                   goal_odom.pose.orientation.z,
                                                   goal_odom.pose.orientation.w))
-        goal.yaw = np.degrees(yaw)
+        goal.yaw = np.rad2deg(yaw)
         return goal
 
     def quaternion2yaw(self, q):
-        # return atan2(2 * (q.w * q.z + q.x * q.y),
-        #              1 - 2 * (q.y * q.y + q.z * q.z))
+        """ Transform quaternion to yaw """
         roll, pitch, yaw = euler_from_quaternion((q.x, q.y, q.z, q.w))
-        return yaw
+        return np.rad2deg(yaw)
 
     def yaw2quaternion(self, yaw):
-        return quaternion_from_euler(0.0, 0.0, yaw)
+        """ Transform yaw to quaternion """
+        return quaternion_from_euler(0.0, 0.0, np.deg2rad(yaw))
 
     def pose_stamped_msg(self, position, yaw):
+        """ Create a PoseStamped message from 3D position and yaw of the drone """
+
         msg = PoseStamped()
         msg.header.frame_id = 'map'
         msg.header.seq = 0
@@ -74,14 +77,14 @@ class Transform:
         return msg
 
     def position_msg(self, m):
+        """ Create a Position message from a PoseStamped message """
         msg = Position()
-        msg.header.frame_id = 'map'
+        msg.header.frame_id = 'cf1/odom'
         msg.header.stamp = rospy.Time.now()
         msg.header.seq = 0
         msg.x = m.pose.position.x
         msg.y = m.pose.position.y
         msg.z = m.pose.position.z
-        msg.yaw = np.degrees(self.quaternion2yaw(m.pose.orientation))
+        msg.yaw = np.rad2deg(self.quaternion2yaw(m.pose.orientation))
         return msg
-
 

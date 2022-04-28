@@ -3,36 +3,36 @@
 from math import *
 import numpy as np
 import rospy
-from crazyflie_driver.msg import Position
-from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from grid_map import GridMap
 from node import Node
 from transform import Transform
+import random
 
 
 class Planner:
-    def __init__(self, start_pose, goal_pose, grid):
+    """ Class to generate an obstacle free path with A* algorithm """
+
+    def __init__(self, grid):
         self.tf = Transform()
         self.current_pose = None
 
         self.grid = grid
 
-        #self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
-        self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=2)
+        self.pub = rospy.Publisher('/mission_planner/path', Path, queue_size=10)
 
-        self.start, self.goal = self.initialize_planning(start_pose, goal_pose)
+        self.grid = grid
+        self.loc_clusters = self.grid.loc_clusters
+        self.start = None
+        self.goal = None
 
-        self.grid[self.start.index] = self.start
-        self.grid[self.goal.index] = self.goal
-
-        X = self.grid.dim[0]-1
-        Y = self.grid.dim[1]-1
-        self.neighbours = lambda x, y: [self.grid[(i, j)] for i in range(x-1, x+2) for j in range(y-1, y+2)
-                                        if ((0 <= i <= X) and (0 <= j <= Y) and not (i == x and j == y)
-                                            and self.grid[(i, j)] != self.grid.occupied_space)]
+        """ Finds the neighbours defined by 8 connectivity of a grid cell """
+        self.neighbours = lambda x, y: [self.grid[(i, j)] for i in range(x - 1, x + 2) for j in range(y - 1, y + 2)
+                                        if self.grid.is_in_bounds([i, j]) and not (i == x and j == y)
+                                        and self.grid.is_free_space([i, j])]
 
     def compute_cost(self, node):
+        """ Computes the cost of a node in a grid cell """
         if node.parent is self.start:
             node.cost2come = np.linalg.norm(node.position - node.parent.position)
         else:
@@ -41,8 +41,7 @@ class Planner:
         """H_path = self.grid.raytrace(node.index, self.goal.index, True)
         prev_cell = node.position
         for cell in H_path[1:]:
-            pos2D = self.grid.index_to_world(cell)
-            cell_pos = np.array([pos2D[0], pos2D[1], self.start.position[2]])
+            cell_pos = self.grid.index_to_world(cell, self.start.position[2])
             node.cost2go += np.linalg.norm(prev_cell-cell_pos)
             prev_cell = cell_pos"""
 
@@ -50,33 +49,70 @@ class Planner:
         node.cost = node.cost2go + node.cost2come
 
     def get_setpoints(self):
-        tol = 10
+        """ Computes a minimum number of set points to follow the path """
         setpoints = []
-        #setpoints.append(self.tf.pose_stamped_msg(self.goal.position, self.goal.yaw))
-        goal = self.tf.pose_stamped_msg(self.goal.position, self.goal.yaw)
         node = self.goal
+        loc_clusters_copy = self.loc_clusters[:]
+        for cluster_index, cluster in enumerate(loc_clusters_copy):
+            for loc_pose in cluster:
+                if np.array_equal(loc_pose.index, node.index):
+                    loc_clusters_copy.pop(cluster_index)
         while node is not self.start:
             q = node.parent
             while q is not None:
-                if not self.grid.raytrace(node.index, q.index, False):
-                    node.parent = q
+                if not self.grid.raytrace(node.index, q.index):
+                    """ All nodes that are localization poses are added to the path set points """
+                    cluster_indices = []
+                    loc_yaw = []
+                    for cluster_index, cluster in enumerate(loc_clusters_copy):
+                        for loc_pose in cluster:
+                            if np.array_equal(loc_pose.index, q.index):
+                                loc_yaw.append(loc_pose.yaw)
+                                cluster_indices.append(cluster_index)
+
+                    if len(loc_yaw) > 0:
+                        cluster_poses = []
+                        for i in cluster_indices:
+                            cluster_poses += loc_clusters_copy.pop(i)
+                        cluster_nodes = []
+                        while q is not None:
+                            for pose in cluster_poses:
+                                if np.array_equal(pose.index, q.index):
+                                    cluster_nodes.append(q)
+                            if q.parent is not None and self.grid.raytrace(node.index, q.parent.index):
+                                break
+                            q = q.parent
+                        if self.start in cluster_nodes:
+                            q = self.start
+                            print("start yaw", self.start.yaw)
+                        else:
+                            q = random.choice(cluster_nodes)
+                            q.yaw = random.choice(loc_yaw)
+                        node.parent = q
+                        print("localization yaw (path planning): ", q.yaw)
+                        break
+                    else:
+                        node.parent = q
                 else:
                     break
                 q = q.parent
             p = node.parent
-            node.yaw = atan2(node.position[1] - p.position[1], node.position[0] - p.position[0])
-            # yaw_diff = abs(np.degrees(p.yaw) - np.degrees(node.yaw))
-            # if yaw_diff > tol and yaw_diff < 360-tol:
-            #    setpoints.append(self.tf.pose_stamped_msg(node.position, p.yaw))
-            setpoints.append(self.tf.pose_stamped_msg(node.position, node.yaw))
+            """ If the node don't have a yaw, compute a yaw in direction from the parent node to the current node """
+            if node.yaw is None:
+                node.yaw = np.rad2deg(atan2(node.position[1] - p.position[1], node.position[0] - p.position[0]))
+
             p.position[2] = self.start.position[2]
-            #setpoints.append(self.tf.pose_stamped_msg(p.position, p.yaw))
+            setpoints.append(self.tf.pose_stamped_msg(node.position, node.yaw))
             node = p
+
+        setpoints.append(self.tf.pose_stamped_msg(self.start.position, self.start.yaw))
         setpoints.reverse()
         return setpoints
 
-    def run(self):
+    def run(self, start_pose, goal_pose):
         rospy.loginfo("Path planner is running!")
+
+        self.initialize_planning(start_pose, goal_pose)
         goal_found = False
         open_set = []
         closed_set = set()
@@ -98,7 +134,8 @@ class Planner:
                 goal_found = True
                 break
 
-            for neighbour in self.neighbours(node.index[0], node.index[1]):
+            neighbours = self.neighbours(node.index[0], node.index[1])
+            for neighbour in neighbours:
                 if neighbour in closed_set:
                     continue
 
@@ -113,8 +150,9 @@ class Planner:
         if goal_found:
             rospy.loginfo("Successfully found a trajectory!")
             setpoints = self.get_setpoints()
-            path = self.path_publisher(setpoints)
-            return path
+            self.path_publisher(setpoints)
+            setpoints.pop(0)
+            return setpoints
         else:
             rospy.loginfo("Could not find a trajectory!")
             return None
@@ -127,17 +165,23 @@ class Planner:
         goal_yaw = self.tf.quaternion2yaw(goal_pose.pose.orientation)
         goal_pos = np.array([goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z])
 
-
         start = Node(self.grid.convert_to_index(start_pos), None, start_pos, start_yaw)
 
         goal = Node(self.grid.convert_to_index(goal_pos), None, goal_pos, goal_yaw)
 
+        self.start = start
+        self.goal = goal
+
+        self.grid[start.index] = start
+        self.grid[goal.index] = goal
+
         return start, goal
 
     def path_publisher(self, setpoints):
+        setpoints = [self.tf.pose_stamped_msg(self.start.position, self.start.yaw)] + setpoints
         path = Path()
         path.poses = setpoints
         path.header.frame_id = 'map'
         path.header.stamp = rospy.Time.now()
         self.pub.publish(path)
-        return path
+
