@@ -15,50 +15,52 @@ import tf2_ros
 import tf2_geometry_msgs
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
+
 class intruder_detection:
+    """ Class to determine if the detected and pose estimated sign is an intruder or not. """
 
     def __init__(self, argv=sys.argv):
 
+        # world_path = '/path'
 
-          # world_path = '/path'
+        # Let ROS filter through the arguments
+        args = rospy.myargv(argv=argv)
 
-          # Let ROS filter through the arguments
-          args = rospy.myargv(argv=argv)
+        # Load world JSON
+        with open(args[1], 'rb') as f:
+            self.world = json.load(f)
 
-          # Load world JSON
-          with open(args[1], 'rb') as f:
-              self.world = json.load(f)
+        # f = open(world_path)
 
-          # f = open(world_path)
+        # self.world = json.load(f)
 
-          # self.world = json.load(f)
+        self.categories = {0:"no_bicycle", 1:"airport" , 2: "dangerous_left", 3:"dangerous_right", 4: "follow_left",
+                     5:"follow_right", 6:"junction", 7:"no_heavy_truck", 8:"no_parking", 9:"no_stopping_and_parking",
+                     10:"residential", 11:"narrows_from_left", 12:"narrows_from_right", 13:"roundabout", 14:"stop"}
 
-          self.categories = {0:"no_bicycle", 1:"airport" , 2: "dangerous_left", 3:"dangerous_right", 4: "follow_left",
-                         5:"follow_right", 6:"junction", 7:"no_heavy_truck", 8:"no_parking", 9:"no_stopping_and_parking",
-                         10:"residential", 11:"narrows_from_left", 12:"narrows_from_right", 13:"roundabout", 14:"stop"}
+        self.signs_in_world = self.signs_in_world()
 
-          self.signs_in_world = self.signs_in_world()
+        # Init TF
+        self.tf_buf   = tf2_ros.Buffer()
+        self.tf_listner  = tf2_ros.TransformListener(self.tf_buf)
+        self.broadcaster = tf2_ros.StaticTransformBroadcaster()
 
-          # Init TF
-          self.tf_buf   = tf2_ros.Buffer()
-          self.tf_listner  = tf2_ros.TransformListener(self.tf_buf)
-          self.broadcaster = tf2_ros.StaticTransformBroadcaster()
+        rospy.sleep(1)
 
-          rospy.sleep(1)
+        self.detected_sub = rospy.Subscriber("/intruder_detection_sign", DetectionArray, self.callback, queue_size = 1)
+        self.intruder_pub = rospy.Publisher("/intruder_topic", String, queue_size = 2)
+        # self.intruder_pose_pub = rospy.Publisher("/intruder_topic", String, queue_size = 10)
 
-          self.detected_sub = rospy.Subscriber("/detected_sign", DetectionArray, self.callback, queue_size = 1)
-          self.intruder_pub = rospy.Publisher("/intruder_topic", String, queue_size = 2)
-          # self.intruder_pose_pub = rospy.Publisher("/intruder_topic", String, queue_size = 10)
-
-
-
-          rospy.loginfo('Intruder detection running')
+        rospy.loginfo('Intruder detection running')
 
     def callback(self, msg):
-        for m in msg.detections:
-            detected_sign_id = m.id
+        """ Callback takes the msg from /detected_sign and compares the sign ID to the signs known to be in the world,
+            If it's not in the world it posts a log that an intruder was detected and a static tranform is
+            placed in the world to symbolize where the intruder is in the map frame. """
 
-            #if m.confidence >= 0.9:
+        for m in msg.detections:
+
+            detected_sign_id = m.id
 
             if detected_sign_id in self.signs_in_world:
                 m.intruder = False
@@ -75,9 +77,9 @@ class intruder_detection:
 
                    #   # marker pose is in frame camera_link
                 if not self.tf_buf.can_transform('map', 'cf1/camera_link', m.header.stamp, rospy.Duration(1)):
-                   rospy.logwarn('pose_estimation: No transform from %s to map', 'cf1/camera_link')
-                   print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
-                   return
+                    rospy.logwarn('pose_estimation: No transform from %s to map', 'cf1/camera_link')
+                    print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
+                    return
 
                 sign_transform = self.tf_buf.transform(m.pose, 'map')
                 print('hit')
@@ -99,10 +101,8 @@ class intruder_detection:
 
                 self.broadcaster.sendTransform(t)
 
-            #else:
-             #   return
-
     def signs_in_world(self):
+        """ Utility to create a dict with all the known signs in the world as reference. """
 
         signs_in_world = {}
 

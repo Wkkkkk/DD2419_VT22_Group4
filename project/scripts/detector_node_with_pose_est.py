@@ -32,167 +32,171 @@ import math
 
 dir = os.path.abspath(os.getcwd())
 
-categories = {0:"no_bicycle", 1:"airport" , 2: "dangerous_left", 3:"dangerous_right", 4: "follow_left",
-               5:"follow_right", 6:"junction", 7:"no_heavy_truck", 8:"no_parking", 9:"no_stopping_and_parking",
-               10:"residential", 11:"narrows_from_left", 12:"narrows_from_right", 13:"roundabout", 14:"stop"}
+categories = {0: "no_bicycle", 1: "airport", 2: "dangerous_left",
+                3: "dangerous_right", 4: "follow_left",
+                5: "follow_right", 6: "junction", 7: "no_heavy_truck",
+                8: "no_parking", 9: "no_stopping_and_parking",
+                10: "residential", 11: "narrows_from_left",
+                12: "narrows_from_right", 13: "roundabout", 14: "stop"}
+
 global tvec, rvec, currentid, refs
-tvec = [0,0,0]
-rvec = [0,0,0]
+tvec = [0, 0, 0]
+rvec = [0, 0, 0]
 currentid = -1
+
+
 def callback(Image):
-   global bridge, Image_header
+    """Callback on the image from camera, processes one image at a time to avoid
+        quing up 'old' images. It takes the raw image and runs the detector
+        for bounding boxes and classification."""
+    global bridge, Image_header
 
-   Image_header = Image.header
-   # convert ros image to cv2
-   try:
-      cv_image = bridge.imgmsg_to_cv2(Image, "bgr8")
-   except CvBridgeError as e:
-      print(e)
+    Image_header = Image.header
+    # convert ros image to cv2
+    try:
+        cv_image = bridge.imgmsg_to_cv2(Image, "bgr8")
+    except CvBridgeError as e:
+        print(e)
 
-   # convert to rgb
-   RGB_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+    # convert to rgb
+    RGB_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
 
-   # convert to pillow image
+    # convert to pillow image
 
-   ##REMOVE DISTORTION! WIP
-   #h,w ,_= RGB_image.shape
-   #new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
-   #dst = cv2.undistort(RGB_image, mtx, dist, None, new_camera_matrix)
-   #x, y, w, h = roi
-   ##dst = dst[y:y+h, x:x+w]
-   dst  = Img.fromarray(RGB_image)
+    # REMOVE DISTORTION! WIP
+    # h,w ,_= RGB_image.shape
+    # new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
+    # dst = cv2.undistort(RGB_image, mtx, dist, None, new_camera_matrix)
+    # x, y, w, h = roi
+    # dst = dst[y:y+h, x:x+w]
 
-   # What follows here is just some weird structuring of the data I had to do for it to fit into the demands of the model, not sure why.
-   # But the list detect_images is what is passed to the model.
-   detect_images = []
-   torch_image, _ = detector.input_transform(dst, [])
-   detect_images.append(torch_image)
+    dst = Img.fromarray(RGB_image)
 
-   if detect_images:
-      detect_images = torch.stack(detect_images)
-      detect_images = detect_images.to(device)
+    # What follows here is just some weird structuring of the data I had to do for it to fit into the demands of the model, not sure why.
+    # But the list detect_images is what is passed to the model.
+    detect_images = []
+    torch_image, _ = detector.input_transform(dst, [])
+    detect_images.append(torch_image)
 
-   # We run the detector/model/network on the image here bbs is the decoded data
-   #   bbs = detector(detect_images)
-   with torch.no_grad():
-      out = detector(detect_images)
-      bbs = detector.decode_output(out, 0.85)
+    if detect_images:
+        detect_images = torch.stack(detect_images)
+        detect_images = detect_images.to(device)
 
-      # Uncomment this part to test if it publishes the tranform for detected sign
-      #publish_detection(bbs, timestamp)
+    # We run the detector/model/network on the image here bbs is the decoded data
+    #   bbs = detector(detect_images)
+    with torch.no_grad():
+        out = detector(detect_images)
+        bbs = detector.decode_output(out, 0.85)
 
-      bounding_box(bbs, cv_image)
+        # Uncomment this part to test if it publishes the tranform for detected sign
+        #publish_detection(bbs, timestamp)
 
-# This function publishes the detected values to the pose estimator
-# def publish_detection(bbs, time_stamp):
-#    if len(bbs[0]) != 0:
-#       bb = max(bbs[0], key=lambda j:j["confidence"])
-#
-#       # detected_sign_param = Detected()
-#       # detected_sign_param.header.stamp = time_stamp
-#       # detected_sign_param.x = float(bb['x'])
-#       # detected_sign_param.y = float(bb['y'])
-#       # detected_sign_param.width = float(bb['width'])
-#       # detected_sign_param.height =float(bb['height'])
-#       # detected_sign_param.classification = bb['category']
-#
-#       detected_sign_param = bb['category']
-#
-#       detected_pub.publish(detected_sign_param)
+        bounding_box(bbs, cv_image)
+
 
 def reference_features():
+    """ This function, takes all the cannonical pdf traffic signs and calculates their features and
+        descriptors, this is done on init to avoid recalculation """
 
-   # Initiate SIFT detector
-   sift = cv2.xfeatures2d.SIFT_create()
+    # Initiate SIFT detector
+    sift = cv2.xfeatures2d.SIFT_create()
 
-   # structure {name1: {kp1:(), des1:()}, name2: {kp2:(), des2:()}}
-   ref = {}
-   file_name = {0:"no_bicycle", 1:"airport" , 2: "dangerous_left", 3:"dangerous_right", 4: "follow_left",
-                5:"follow_right", 6:"junction", 7:"no_heavy_truck", 8:"no_parking", 9:"no_stopping_and_parking",
-                10:"residential", 11:"narrows_from_left", 12:"narrows_from_right", 13:"roundabout", 14:"stop"}
+    # structure {name1: {kp1:(), des1:()}, name2: {kp2:(), des2:()}}
+    ref = {}
+    file_name = {0: "no_bicycle", 1: "airport" , 2: "dangerous_left", 3: "dangerous_right", 4: "follow_left",
+                5: "follow_right", 6: "junction", 7: "no_heavy_truck", 8: "no_parking", 9:"no_stopping_and_parking",
+                10: "residential", 11: "narrows_from_left", 12: "narrows_from_right", 13: "roundabout", 14: "stop"}
 
-   # import images
-   for i in range(len(file_name)):
-      sign_file_name = file_name[i]
-      sign_name = categories[i]
-      
-      base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + sign_file_name  + ".jpg", cv2.IMREAD_COLOR)
-      # convert cannonical image to gray scale
-      base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
+    # import images
+    for i in range(len(file_name)):
+        sign_file_name = file_name[i]
+        sign_name = categories[i]
 
-      #base_gray = cv2.resize(base_gray, (0,0), fx=0.1, fy=0.1)
-      (h,w) = base_gray.shape[:2]
-      base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
-      base_gray = base_gray[150:base_gray.shape[0]-150, :] #212
+        base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + sign_file_name  + ".jpg", cv2.IMREAD_COLOR)
+        # convert cannonical image to gray scale
+        base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
 
-      #TA BORT SENARE
-      (h,w) = base_gray.shape[:2]
-      base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
+        #base_gray = cv2.resize(base_gray, (0,0), fx=0.1, fy=0.1)
+        (h,w) = base_gray.shape[:2]
+        base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
+        base_gray = base_gray[150:base_gray.shape[0]-150, :]  #212
 
-      b_height, b_width = base_gray.shape
+        #TA BORT SENARE
+        (h,w) = base_gray.shape[:2]
+        base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
 
-      kp, des = sift.detectAndCompute(base_gray, None)
+        b_height, b_width = base_gray.shape
 
-      ref[sign_name] = {'kp': kp, 'des': des, 'width': b_width, 'height': b_height}
+        kp, des = sift.detectAndCompute(base_gray, None)
 
-   return ref
-# function to print bboxes
+        ref[sign_name] = {'kp': kp, 'des': des, 'width': b_width, 'height': b_height}
+
+    return ref
+
+
 def bounding_box(detections, cv_image):
-   box_colour = (255,0,0)
-   thickness = 2
-   font = cv2.FONT_HERSHEY_SIMPLEX
-   fontScale = 0.6
-   text_colour = (255, 0, 0)
-   text_thickness = 1
+    """ Function to print bounding boxes and bounding box labels and publish the result in its own topic
+        We also pass the image and bounding box info to the pose estimator """
+    box_colour = (255,0,0)
+    thickness = 2
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 0.6
+    text_colour = (255, 0, 0)
+    text_thickness = 1
 
-   # The values are tensors in the decoded data structure so i convert to float, not sure if neccesary
-   # structure of detections is list[list[dict]]
+    # The values are tensors in the decoded data structure so i convert to float, not sure if neccesary
+    # structure of detections is list[list[dict]]
 
-   # Since bbs CAN be a list for detections of multiple images we run a for loop here but it likely only runs once since we process one
-   # image at a time.
-#   for i, bbs in enumerate(detections):
-   # Pick box with highest confidance
-   if len(detections[0]) != 0:
-      bb = max(detections[0], key=lambda j:j["score"])
-      x = int(bb['x'])
-      y = int(bb['y'])
-      width = int(bb['width'])
-      height = int(bb['height'])
-      classification = categories[bb['category']]
+    # Since bbs CAN be a list for detections of multiple images we run a for loop here but it likely only runs once since we process one
+    # image at a time.
 
-      bb_info = {'x': x, 'y': y, 'width': width, 'height': height, 'category': classification, 'id': bb['category'], 'confidence': bb["score"]}
-      id = classification
-      # Start is top left corner and end is bottom right
-      start = (x,y)
-      end = (x+width,y+height)
+    # Pick box with highest confidance
+    if len(detections[0]) != 0:
+        bb = max(detections[0], key=lambda j:j["score"])
+        x = int(bb['x'])
+        y = int(bb['y'])
+        width = int(bb['width'])
+        height = int(bb['height'])
+        classification = categories[bb['category']]
 
-      #This is the point that anchors the text label in the image
-      org = (x, y-10)
+        bb_info = {'x': x, 'y': y, 'width': width, 'height': height, 'category': classification, 'id': bb['category'], 'confidence': bb["score"]}
+        id = classification
 
-      cv2.rectangle(cv_image, start, end, box_colour, thickness)
-      cv2.putText(cv_image, id, org, font, fontScale, text_colour, text_thickness)
+        # Start is top left corner and end is bottom right
+        start = (x,y)
+        end = (x+width,y+height)
 
-      pose_estimation(cv_image, bb_info)
+        #This is the point that anchors the text label in the image
+        org = (x, y-10)
 
-   # Publish the image
-   try:
-      image_pub.publish(bridge.cv2_to_imgmsg(cv_image, "bgr8"))
-   except CvBridgeError as e:
-      print(e)
+        cv2.rectangle(cv_image, start, end, box_colour, thickness)
+        cv2.putText(cv_image, id, org, font, fontScale, text_colour, text_thickness)
+
+        pose_estimation(cv_image, bb_info)
+
+    # Publish the image
+    try:
+        image_pub.publish(bridge.cv2_to_imgmsg(cv_image, "bgr8"))
+    except CvBridgeError as e:
+        print(e)
+
 
 def keypoints_for_estimation(matches, kp_object, kp_image):
-   keypoints_3d = []
-   keypoints_2d = []
+    """ Utility function to extract keypoints based on the matched points indexes """
+    keypoints_3d = []
+    keypoints_2d = []
 
-   for i in range(len(matches)):
-      object_index = matches[i].queryIdx
-      image_index = matches[i].trainIdx
-      keypoints_3d.append(kp_object[object_index])
-      keypoints_2d.append(kp_image[image_index])
+    for i in range(len(matches)):
+        object_index = matches[i].queryIdx
+        image_index = matches[i].trainIdx
+        keypoints_3d.append(kp_object[object_index])
+        keypoints_2d.append(kp_image[image_index])
 
-   return keypoints_3d, keypoints_2d
+    return keypoints_3d, keypoints_2d
+
 
 def object_keypoint_to_3d(object_keypoints, image_width, image_height):
+    """ Utility function to transform the keypoints into 3D points for pose estimation """
     object_points = []
     real_width = 0.21
     real_height = 0.297
@@ -200,244 +204,262 @@ def object_keypoint_to_3d(object_keypoints, image_width, image_height):
         object_points.append((i.pt[0]*(real_width/image_width), i.pt[1]*(real_height/image_height), 0))
     return np.array(object_points)
 
+
 def image_keypoint_to_2d(image_keypoints):
-   image_points = []
-   for i in image_keypoints:
-      image_points.append((i.pt[0], i.pt[1],))
-   return np.array(image_points)
+    """ Utility function to transform the keypoints into 2D points for pose estimation """
+    image_points = []
+    for i in image_keypoints:
+        image_points.append((i.pt[0], i.pt[1],))
+    return np.array(image_points)
+
 
 def pose_estimation(camera_image, bb_info):
-   global Image_header, tvec, rvec, currentid, refs
+    """ Function that performs the pose estimation, it takes the camera image and bb info,
+        it runns feature detection on the camera image and then matches the descriptors and keypoints
+        in the camera image to those in the cannonical image. We then extract the best matches
+        and use solvePnP to estimate the pose. """
+    global Image_header, tvec, rvec, currentid, refs
 
-   # convert camera image to gray scale
-   cv_gray = cv2.cvtColor(camera_image, cv2.COLOR_BGR2GRAY)
+    # convert camera image to gray scale
+    cv_gray = cv2.cvtColor(camera_image, cv2.COLOR_BGR2GRAY)
 
-   # Bounding box size
-   x = bb_info['x']
-   y = bb_info['y']
-   width = bb_info['width']
-   height = bb_info['height']
+    # Bounding box size
+    x = bb_info['x']
+    y = bb_info['y']
+    width = bb_info['width']
+    height = bb_info['height']
 
-   #???????????????????????????
-   if currentid != bb_info['id']:
-      tvec[0] = 0
-      currentid = bb_info['id']
+    #???????????????????????????
+    if currentid != bb_info['id']:
+        tvec[0] = 0
+        currentid = bb_info['id']
 
-   # Cropp image to only include bounding box info
-   cropped_img = cv_gray[y:y+height, x:x+width]
-   #cropped_img = cv_gray
+    # Cropp image to only include bounding box info
+    cropped_img = cv_gray[y:y+height, x:x+width]
+    #cropped_img = cv_gray
 
-   # Import the cannonical traffic sign based on detected class
-   #base_img = cv2.imread(dir + "traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
-   #base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
+    # Import the cannonical traffic sign based on detected class
+    #base_img = cv2.imread(dir + "traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
+    #base_img = cv2.imread("/home/maciejw/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
 
-   # convert cannonical image to gray scale
-   #base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
-   
-
-   #(h,w) = base_gray.shape[:2]
-   #base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
-   #base_gray = base_gray[150:base_gray.shape[0]-150, :]
-
-   #TA BORT SENARE
-   #(h,w) = base_gray.shape[:2]
-   #base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
-
-   
-   b_height, b_width = refs[bb_info['category']]['height'], refs[bb_info['category']]['width']
-   # Initiate SIFT detector
-   sift = cv2.xfeatures2d.SIFT_create()
-   #orb = cv2.ORB_create()
-   t = time.time()
-
-   # find the keypoints and descriptors with SIFT for both images
-   ####kp1, des1 = sift.detectAndCompute(base_gray, None)
-   kp1 = refs[bb_info['category']]['kp']
-   des1 = refs[bb_info['category']]['des']
-
-   
-   #kp1 = orb.detect(base_gray, None)
-   #kp2 = orb.detect(cropped_img, None)
-   #kp1 ,des1 = orb.compute(base_gray, kp1)
-   #kp2, des2 = orb.compute(cropped_img, kp2)
-
-   #print(time.time()-t)
-   if cropped_img.size == 0 or type(cropped_img) == NoneType:
-      return
-   kp2, des2 = sift.detectAndCompute(cropped_img, None)
-
-   # create BFMatcher object
-   bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
-   if len(kp2) == 0:
-      return
-   # Match descriptors with brute force
-   matches = bf.knnMatch(des1,des2, 2)
-   #matches = bf.match(des1,des2)
-   if len(matches) == 0:
-      return 
-   ##TEST FLANNNNNNN
-   #FLANN_INDEX_KDTREE = 0
-   #index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-   #search_params = dict(checks = 50)
-
-   #flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-   #matches = flann.knnMatch(des1,des2,k=2)
+    # convert cannonical image to gray scale
+    #base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
 
 
-   matches = np.array(matches)
-   ## Apply Lowes ratio test
-   if matches.shape[1] == 1:
-      return
+    #(h,w) = base_gray.shape[:2]
+    #base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
+    #base_gray = base_gray[150:base_gray.shape[0]-150, :]
 
-   good = []
+    #TA BORT SENARE
+    #(h,w) = base_gray.shape[:2]
+    #base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
 
-   for m,n in matches:
-      if m.distance < 0.8*n.distance:
-         good.append(m)
-   matches = good
+    b_height, b_width = refs[bb_info['category']]['height'], refs[bb_info['category']]['width']
+    # Initiate SIFT detector
+    sift = cv2.xfeatures2d.SIFT_create()
+    #orb = cv2.ORB_create()
+    t = time.time()
 
-   # Sort them in the order of their distance.
-   matches = sorted(matches, key = lambda x:x.distance)
+    # find the keypoints and descriptors with SIFT for both images
+    ####kp1, des1 = sift.detectAndCompute(base_gray, None)
+    kp1 = refs[bb_info['category']]['kp']
+    des1 = refs[bb_info['category']]['des']
 
-   # Find the best matching keypoints from the matches
-   keypoints_3d, keypoints_2d = keypoints_for_estimation(matches, kp1, kp2)
+    #kp1 = orb.detect(base_gray, None)
+    #kp2 = orb.detect(cropped_img, None)
+    #kp1 ,des1 = orb.compute(base_gray, kp1)
+    #kp2, des2 = orb.compute(cropped_img, kp2)
 
-   # Convert keypoints into 3d object points
-   object_points = object_keypoint_to_3d(keypoints_3d, b_width, b_height)
+    #print(time.time()-t)
+    if cropped_img.size == 0 or type(cropped_img) == NoneType:
+        return
+    kp2, des2 = sift.detectAndCompute(cropped_img, None)
 
-   # Convert keypoints into 2d image points
-   image_points = image_keypoint_to_2d(keypoints_2d)
-   for n in image_points:
-      n[0] += x
-      n[1] += y
-   matches = np.array(matches)
-   if matches.size == 0:
-      return
-   #print(image_points[0])
-   #print(keypoints_2d[0].pt)
-   # Find rotation and translation vectors for pose estimation
-   print("Matches: ", len(matches), "Min Distance; ", matches[0].distance)
-   if len(matches) < 4:
-      return
+    # create BFMatcher object
+    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+    if len(kp2) == 0:
+        return
 
-   #FOR OTHER FLAGS, REMOVE OTHERWISE
-   #N,M = object_points.shape
-   #object_points = np.ascontiguousarray(object_points[:,:2]).reshape((N,1,2))
-   N,M = image_points.shape
-   image_points = np.ascontiguousarray(image_points[:,:2]).reshape((N,1,2))
-   object_points.astype('float32')
-   #a= np.array([[0],[0],[0]])
-   #b=np.array([[0],[0],[0.4]])
-   #print(a)
-   #a = np.ascontiguousarray(a, dtype=np.uint8)
-   #b = np.ascontiguousarray(b, dtype=np.uint8)
+    # Match descriptors with brute force
+    matches = bf.knnMatch(des1,des2, 2)
+    #matches = bf.match(des1,des2)
+    if len(matches) == 0:
+        return
 
-   if tvec[0] == 0:
-      retval, rvec, tvec = cv2.solvePnP(object_points[:4], image_points[:4], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
-   else:
-      retval, rvec, tvec = cv2.solvePnP(object_points[:4], image_points[:4], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
-  
-   if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 2:# or type(inliers) == NoneType:
-      return
-   if tvec[2] < 0: #outlier :))))))
-      return
-   if math.isnan(rvec[0]) or math.isnan(rvec[0]) or math.isnan(rvec[0]):
-      return 
-   #inliers = np.asarray(inliers).reshape(-1)
-   #print(inliers)
-   #EXTRA :)
-   #ke = cv2.KeyPoint(x = 0, y = 1, _size = 1)
-   #print(ke.pt)
-   #keypoints_2d[0].pt = ke.pt
-   #print(keypoints_2d[0].pt)
-   #img_kp = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
-   #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-   #cv_gray = cv2.circle(cv_gray, (int(image_points[0][0]),int(image_points[0][1])), radius=0, color=(0, 0, 255), thickness=-1)
-   #cv_gray = cv2.circle(cv_gray, (int(image_points[1][0]),int(image_points[1][1])), radius=0, color=(0, 0, 255), thickness=-1)
-   #print(cv_gray.shape)
-   #cv2.imwrite('test.png', img3)
-   #cv2.imwrite('aaa.png', cv_gray)
-   #time.sleep(7)
-   #print("Printed!")
-   #print(keypoints_3d[0].pt)
-   #print("--------")
-   #print(keypoints_3d[1].pt)
-   #print("prriiiinted")
-   
-   sign_pose = PoseStamped()
-   sign_pose.header = Image_header
-   sign_pose.header.frame_id = Image_header.frame_id
-   sign_pose.header.stamp = Image_header.stamp
-   #print(tvec)
-   #sign_pose.pose.position.x = tvec[2]
-   #sign_pose.pose.position.y = -tvec[0]
-   #sign_pose.pose.position.z = -tvec[1]
-   sign_pose.pose.position.x = tvec[0]
-   sign_pose.pose.position.y = tvec[1]
-   sign_pose.pose.position.z = tvec[2]
-   x, y, z, w = quaternion_from_euler(rvec[0], rvec[1], rvec[2])
-   sign_pose.pose.orientation.x = x
-   sign_pose.pose.orientation.y = y
-   sign_pose.pose.orientation.z = z
-   sign_pose.pose.orientation.w = w
-   
-   publish_pose(sign_pose, bb_info['id'], bb_info["category"], bb_info["confidence"])
+    ##TEST FLANNNNNNN
+    #FLANN_INDEX_KDTREE = 0
+    #index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    #search_params = dict(checks = 50)
+
+    #flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+    #matches = flann.knnMatch(des1,des2,k=2)
 
 
-# Does the transform and publishes the map to detected sign transfomr
+    matches = np.array(matches)
+    ## Apply Lowes ratio test
+    if matches.shape[1] == 1:
+        return
+
+    good = []
+
+    # Find closest matches
+    for m,n in matches:
+        if m.distance < 0.8*n.distance:
+            good.append(m)
+    matches = good
+
+    # Sort them in the order of their distance.
+    matches = sorted(matches, key = lambda x:x.distance)
+
+    # Find the best matching keypoints from the matches
+    keypoints_3d, keypoints_2d = keypoints_for_estimation(matches, kp1, kp2)
+
+    # Convert keypoints into 3d object points
+    object_points = object_keypoint_to_3d(keypoints_3d, b_width, b_height)
+
+    # Convert keypoints into 2d image points
+    image_points = image_keypoint_to_2d(keypoints_2d)
+    for n in image_points:
+        n[0] += x
+        n[1] += y
+    matches = np.array(matches)
+    if matches.size == 0:
+        return
+
+    #print(image_points[0])
+    #print(keypoints_2d[0].pt)
+    # Find rotation and translation vectors for pose estimation
+    print("Matches: ", len(matches), "Min Distance; ", matches[0].distance)
+    if len(matches) < 4:
+        return
+
+    #FOR OTHER FLAGS, REMOVE OTHERWISE
+    #N,M = object_points.shape
+    #object_points = np.ascontiguousarray(object_points[:,:2]).reshape((N,1,2))
+    N,M = image_points.shape
+    image_points = np.ascontiguousarray(image_points[:,:2]).reshape((N,1,2))
+    object_points.astype('float32')
+    #a= np.array([[0],[0],[0]])
+    #b=np.array([[0],[0],[0.4]])
+    #print(a)
+    #a = np.ascontiguousarray(a, dtype=np.uint8)
+    #b = np.ascontiguousarray(b, dtype=np.uint8)
+
+    if tvec[0] == 0:
+        retval, rvec, tvec = cv2.solvePnP(object_points[:4], image_points[:4], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
+    else:
+        retval, rvec, tvec = cv2.solvePnP(object_points[:4], image_points[:4], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
+
+    if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 2:# or type(inliers) == NoneType:
+        return
+    if tvec[2] < 0: #outlier :))))))
+        return
+    if math.isnan(rvec[0]) or math.isnan(rvec[0]) or math.isnan(rvec[0]):
+        return
+
+    #inliers = np.asarray(inliers).reshape(-1)
+    #print(inliers)
+    #EXTRA :)
+    #ke = cv2.KeyPoint(x = 0, y = 1, _size = 1)
+    #print(ke.pt)
+    #keypoints_2d[0].pt = ke.pt
+    #print(keypoints_2d[0].pt)
+    #img_kp = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
+    #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    #cv_gray = cv2.circle(cv_gray, (int(image_points[0][0]),int(image_points[0][1])), radius=0, color=(0, 0, 255), thickness=-1)
+    #cv_gray = cv2.circle(cv_gray, (int(image_points[1][0]),int(image_points[1][1])), radius=0, color=(0, 0, 255), thickness=-1)
+    #print(cv_gray.shape)
+    #cv2.imwrite('test.png', img3)
+    #cv2.imwrite('aaa.png', cv_gray)
+    #time.sleep(7)
+    #print("Printed!")
+    #print(keypoints_3d[0].pt)
+    #print("--------")
+    #print(keypoints_3d[1].pt)
+    #print("prriiiinted")
+
+    sign_pose = PoseStamped()
+    sign_pose.header = Image_header
+    sign_pose.header.frame_id = Image_header.frame_id
+    sign_pose.header.stamp = Image_header.stamp
+    #print(tvec)
+    #sign_pose.pose.position.x = tvec[2]
+    #sign_pose.pose.position.y = -tvec[0]
+    #sign_pose.pose.position.z = -tvec[1]
+    sign_pose.pose.position.x = tvec[0]
+    sign_pose.pose.position.y = tvec[1]
+    sign_pose.pose.position.z = tvec[2]
+    x, y, z, w = quaternion_from_euler(rvec[0], rvec[1], rvec[2])
+    sign_pose.pose.orientation.x = x
+    sign_pose.pose.orientation.y = y
+    sign_pose.pose.orientation.z = z
+    sign_pose.pose.orientation.w = w
+
+    publish_pose(sign_pose, bb_info['id'], bb_info["category"], bb_info["confidence"])
+
+
 def publish_pose(sign_pose, id, category, confidence):
-   
-   Detected_msg = Detection()
-   DetectedArray_msg = DetectionArray()
-   trans = TransformStamped()
+    """ Creates the Transform from camera link to the detected sign and publishes to tf. Also
+        creates a Detected_msg and DetectedArray_msg to post the pose for localization. """
 
-   Detected_msg.header.frame_id = sign_pose.header.frame_id
-   # trans.header.frame_id = 'map'
-   Detected_msg.header.stamp = sign_pose.header.stamp
-   trans.header.stamp = sign_pose.header.stamp
-   
-   trans.header.frame_id = 'cf1/camera_link'
-   # trans.header.frame_id = 'map'
-   trans.child_frame_id = 'detector/detectedsign_' + category
-   sign_pose.header.frame_id = "cf1/camera_link"
-   
-   #   # marker pose is in frame camera_link
-   #if not tf_buf.can_transform('map', 'cf1/camera_link', sign_pose.header.stamp, rospy.Duration(1)):
-   #   rospy.logwarn('pose_estimation: No transform from %s to map', sign_pose.header.frame_id)
-   #   print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
-   #   return
+    Detected_msg = Detection()
+    DetectedArray_msg = DetectionArray()
+    trans = TransformStamped()
 
-   #sign_transform = tf_buf.transform(sign_pose, 'map')
-   Detected_msg.pose.header.frame_id = sign_pose.header.frame_id
-   Detected_msg.pose.pose.position.x = sign_pose.pose.position.x
-   Detected_msg.pose.pose.position.y = sign_pose.pose.position.y
-   Detected_msg.pose.pose.position.z = sign_pose.pose.position.z
-   trans.transform.translation.x = sign_pose.pose.position.x
-   trans.transform.translation.y = sign_pose.pose.position.y
-   trans.transform.translation.z = sign_pose.pose.position.z
+    Detected_msg.header.frame_id = sign_pose.header.frame_id
+    # trans.header.frame_id = 'map'
+    Detected_msg.header.stamp = sign_pose.header.stamp
+    trans.header.stamp = sign_pose.header.stamp
 
-   Detected_msg.pose.pose.orientation.x = sign_pose.pose.orientation.x
-   Detected_msg.pose.pose.orientation.y = sign_pose.pose.orientation.y
-   Detected_msg.pose.pose.orientation.z = sign_pose.pose.orientation.z
-   Detected_msg.pose.pose.orientation.w = sign_pose.pose.orientation.w
-   trans.transform.rotation.x = sign_pose.pose.orientation.x
-   trans.transform.rotation.y = sign_pose.pose.orientation.y
-   trans.transform.rotation.z = sign_pose.pose.orientation.z
-   trans.transform.rotation.w = sign_pose.pose.orientation.w
+    trans.header.frame_id = 'cf1/camera_link'
+    # trans.header.frame_id = 'map'
+    trans.child_frame_id = 'detector/detectedsign_' + category
+    sign_pose.header.frame_id = "cf1/camera_link"
 
-   broadcaster.sendTransform(trans)
-   #Publish message
-   Detected_msg.id  = id
-   Detected_msg.confidence = confidence
-   DetectedArray_msg.detections = [Detected_msg]
-   detected_pub.publish(DetectedArray_msg)
+    #   # marker pose is in frame camera_link
+    #if not tf_buf.can_transform('map', 'cf1/camera_link', sign_pose.header.stamp, rospy.Duration(1)):
+    #   rospy.logwarn('pose_estimation: No transform from %s to map', sign_pose.header.frame_id)
+    #   print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
+    #   return
+
+    #sign_transform = tf_buf.transform(sign_pose, 'map')
+    Detected_msg.pose.header.frame_id = sign_pose.header.frame_id
+    Detected_msg.pose.pose.position.x = sign_pose.pose.position.x
+    Detected_msg.pose.pose.position.y = sign_pose.pose.position.y
+    Detected_msg.pose.pose.position.z = sign_pose.pose.position.z
+    trans.transform.translation.x = sign_pose.pose.position.x
+    trans.transform.translation.y = sign_pose.pose.position.y
+    trans.transform.translation.z = sign_pose.pose.position.z
+
+    Detected_msg.pose.pose.orientation.x = sign_pose.pose.orientation.x
+    Detected_msg.pose.pose.orientation.y = sign_pose.pose.orientation.y
+    Detected_msg.pose.pose.orientation.z = sign_pose.pose.orientation.z
+    Detected_msg.pose.pose.orientation.w = sign_pose.pose.orientation.w
+    trans.transform.rotation.x = sign_pose.pose.orientation.x
+    trans.transform.rotation.y = sign_pose.pose.orientation.y
+    trans.transform.rotation.z = sign_pose.pose.orientation.z
+    trans.transform.rotation.w = sign_pose.pose.orientation.w
+
+    broadcaster.sendTransform(trans)
+    #Publish message
+    Detected_msg.id  = id
+    Detected_msg.confidence = confidence
+    DetectedArray_msg.detections = [Detected_msg]
+
+    """ Publish to /detected_sign """
+    detected_pub.publish(DetectedArray_msg)
+
+    """ Publish to /intruder_detection_sign to perform intruder detection """
+    intruder_det_pub.publish(DetectedArray_msg)
 
 # Init node
 rospy.init_node('detect_node')
+
 # Init publisher
 image_pub = rospy.Publisher("/bbox", Image, queue_size=1)
-detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=5)
+detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=1)
+intruder_det_pub = rospy.Publisher("/intruder_detection_sign", DetectionArray, queue_size=1)
 
 # Init TF
 tf_buf   = tf2_ros.Buffer()
@@ -482,18 +504,22 @@ mtx = np.array([[231.45889158 ,  0.   ,      326.96473621],
 
 print("Running...")
 
-def caminfo(caminfo_msg):
-   global camera_matrix, distortion_parameters
 
-   camera_matrix = caminfo_msg.K
-   distortion_parameters = caminfo_msg.D
+def caminfo(caminfo_msg):
+    global camera_matrix, distortion_parameters
+
+    camera_matrix = caminfo_msg.K
+    distortion_parameters = caminfo_msg.D
+
 
 def main():
-   image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback, queue_size = 1)
-   rospy.spin()
+    image_sub = rospy.Subscriber("/cf1/camera/image_raw", Image, callback,
+                                 queue_size=1)
+    rospy.spin()
 
 
 if __name__ == '__main__':
-   caminfo_sub = rospy.Subscriber("/cf1/camera/camera_info", CameraInfo, caminfo)
+    caminfo_sub = rospy.Subscriber("/cf1/camera/camera_info", CameraInfo,
+                                   caminfo)
 
-   main()
+    main()
