@@ -1,39 +1,33 @@
 #!/usr/bin/env python
 
-import math
 import numpy as np
 import rospy
 from crazyflie_driver.msg import Hover, Position
 from std_msgs.msg import Empty
-from threading import Thread
 from transform import Transform
 from geometry_msgs.msg import PoseStamped, Point
 
 
 class Crazyflie:
     def __init__(self, prefix="cf1"):
+        self.height = 0.4  # Height at which the drone should fly at
+
         self.prefix = prefix
         self.tf = Transform()
-        self.height = 0.4
-        self.current_pose = None
 
+        self.current_pose = None
         self.rate = rospy.Rate(10)
 
         self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
 
-        self.pub_hover = rospy.Publisher(prefix + "/cmd_hover", Hover, queue_size=1)
-        self.hover_msg = Hover()
-        self.hover_msg.header.seq = 0
-        self.hover_msg.header.stamp = rospy.Time.now()
-        self.hover_msg.header.frame_id = 'c1/odom'
-        self.hover_msg.yawrate = 0
-
         self.pub_position = rospy.Publisher(prefix + "/cmd_position", Position, queue_size=1)
+        """ Initializing Position message for publishing position commands """
         self.position_msg = Position()
         self.position_msg.header.seq = 0
         self.position_msg.header.frame_id = 'c1/odom'
         self.position_msg.header.stamp = rospy.Time.now()
 
+        """ Commands the drone to stop its rotors """
         self.stop_pub = rospy.Publisher(prefix + "/cmd_stop", Empty, queue_size=1)
         self.stop_msg = Empty()
 
@@ -41,83 +35,91 @@ class Crazyflie:
 
 
     def goTo(self, goal, vel = 0.2):
+        """ Action to make drone fly straight to a set point at a velocity determined by vel """
         start_pose = self.current_pose
 
-        pos_tol = 0.05
-        dt = 0.1
-        self.position_msg.yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        pos_tol = 0.05  # Tolerance of difference in position
+        dt = 0.1  # Rate at which to publish position command
+
+        self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
 
-        pose_array = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
+        position_array = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
         goal_array = np.array([goal.x, goal.y, goal.z])
-        while not rospy.is_shutdown() and np.linalg.norm(goal_array - pose_array) > pos_tol: 
-            diff = goal_array - pose_array
+
+        while not rospy.is_shutdown() and np.linalg.norm(goal_array - position_array) > pos_tol:
+            """ Calculates the next position at dt seconds later """
+            diff = goal_array - position_array
             norm_diff = diff/np.linalg.norm(diff)
-            pose_array += dt*vel * norm_diff
-            self.position_msg.x = pose_array[0]
-            self.position_msg.y = pose_array[1]
-            self.position_msg.z = pose_array[2]
+            position_array += dt*vel * norm_diff
+
+            """ Publish the next position """
+            self.position_msg.x = position_array[0]
+            self.position_msg.y = position_array[1]
+            self.position_msg.z = position_array[2]
             self.position_msg.header.stamp = rospy.Time.now()
             self.position_msg.header.seq += 1
             self.pub_position.publish(self.position_msg)
+
             rospy.sleep(dt)
 
+        """ Hover for a while """
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
-            if (now - start > 2):
+            if now - start > 2:
                 break
             goal.header.stamp = rospy.Time.now()
             goal.header.seq += 1
             self.pub_position.publish(goal)
             self.rate.sleep()
 
-
     def start_hovering(self):
+        """ Start hovering """
         rospy.loginfo("start hovering")
         self.position_msg = self.tf.position_msg(self.current_pose)
         self.hover_timer = rospy.Timer(rospy.Duration(1.0 / 20), self.hover)
 
-
     def stop_hovering(self):
+        """ Stop hovering """
         if self.hover_timer and self.hover_timer.is_alive():
             rospy.loginfo("stop hovering")
             self.hover_timer.shutdown()
             rospy.sleep(0.1)
 
-
     def hover(self, timer=None):
+        """ starts when start_hovering is called and stops when stop_hovering is called """
         self.position_msg.header.stamp = rospy.Time.now()
         self.position_msg.header.seq += 1
         self.pub_position.publish(self.position_msg)
         self.rate.sleep()
 
-
-    # take off to height
-    def takeOff(self, goal_height): 
+    def takeOff(self, goal_height):
+        """ Make drone take off from the ground to a certain height """
         start_pose = self.current_pose
 
         self.position_msg.x = start_pose.pose.position.x
         self.position_msg.y = start_pose.pose.position.y
-        #self.position_msg.z = 0.1
-        self.position_msg.yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
-        #self.pub_position.publish(self.position_msg)
-        #self.rate.sleep()
 
         height = start_pose.pose.position.z
         tol = 0.05
         dt = 0.2
         vel = 0.5
         while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
+            """ Calculates the next height at dt seconds later """
             height_diff = goal_height - height
             height += dt*vel*height_diff
+
+            """ Publish the next height """
             self.position_msg.z = height
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
             rospy.sleep(dt)
 
+        """ Hover for a while """
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
@@ -128,9 +130,8 @@ class Crazyflie:
             self.pub_position.publish(self.position_msg)
             self.rate.sleep()
 
-
-    # rotate itself
-    def rotate(self, goal_yaw, yawrate=25):
+    def rotate(self, goal_yaw, yawrate=30):
+        """ Rotate the drone to a desired yaw at a rate determined by yawrate """
         start_pose = self.current_pose
         yawrate = abs(yawrate)
 
@@ -140,56 +141,76 @@ class Crazyflie:
         self.position_msg.header.seq = 0
 
         dt = 0.1
-        yaw_tol = dt*abs(yawrate)
+        yaw_tol = dt*abs(yawrate)  # tolerance based on publishing rate and yaw rate
 
-        yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
-        while not rospy.is_shutdown() and abs(np.mod((goal_yaw - np.degrees(self.tf.quaternion2yaw(self.current_pose.pose.orientation)) + 180), 360) - 180) > yaw_tol:
+        yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
+        while not rospy.is_shutdown() and self.yaw_difference(goal_yaw, yaw) > yaw_tol:
+            """ Calculates the next yaw at dt seconds later """
+            #current_yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
             angular_diff = np.mod((goal_yaw - yaw + 180), 360) - 180
             yaw += dt*yawrate*np.sign(angular_diff)
+
+            """ Forces yaw to stay within the interval [-180, 180] degrees """
             if abs(yaw) > 180:
                 yaw += -np.sign(yaw)*360
+
+            """ Publish the next yaw """
             self.position_msg.yaw = yaw
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
+
             rospy.sleep(dt)
+
+        """ Hover for a while """
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
-            if (now - start > 3):
+            if now - start > 3:
                 break
             self.position_msg.yaw = goal_yaw
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
             self.rate.sleep()
 
-
     def land(self):
+        """ Lands the drone on the ground from its current height """
+
         start_pose = self.current_pose
 
         self.position_msg.x = start_pose.pose.position.x
         self.position_msg.y = start_pose.pose.position.y
-        self.position_msg.yaw = np.degrees(self.tf.quaternion2yaw(start_pose.pose.orientation))
+        self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
 
-        height = start_pose.pose.position.z
-        landing_height = 0.1
+        landing_height = 0.1  # Height at which to stop the rotors of the drone
         tol = 0.05
         vel = 0.3
         dt = 0.1
+
+        height = start_pose.pose.position.z
         while not rospy.is_shutdown() and (self.current_pose.pose.position.z - landing_height) > tol:
+            """ Calculates the next height at dt seconds later """
             height_diff = landing_height - height
             height += dt*vel*height_diff
+
+            """ Publish the next height """
             self.position_msg.z = height
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
+
             rospy.sleep(dt)
-        self.stop_pub.publish(self.stop_msg)
+
+        self.stop_pub.publish(self.stop_msg)  # Stop rotors
+
+    def yaw_difference(self, goal_yaw, yaw):
+        """ Calculates difference between current yaw and goal yaw """
+        #current_yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
+        return abs(np.mod((goal_yaw - yaw + 180), 360) - 180)
 
     def pose_callback(self, msg):
-        """ Retrieves the current pose of the drone in odom frame."""
-        #self.current_pose = self.tf.transform2map(msg)
+        """ Retrieves the current pose of the drone in odometry frame """
         self.current_pose = msg
 
 
@@ -213,7 +234,7 @@ if __name__ == '__main__':
     goal.z = cf.current_pose.pose.position.z
     cf.goTo(goal)
 
-    yaw = np.degrees(cf.tf.quaternion2yaw(cf.current_pose.pose.orientation))
+    yaw = cf.tf.quaternion2yaw(cf.current_pose.pose.orientation)
     cf.rotate(yaw+180,30)
     goal.x = cf.current_pose.pose.position.x - 1
     goal.y = cf.current_pose.pose.position.y
@@ -233,3 +254,4 @@ if __name__ == '__main__':
     # goal.x = 1.5
     # goal.y = -1
     # cf.goTo(goal)
+
