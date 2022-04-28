@@ -13,7 +13,7 @@ from geometry_msgs.msg import TransformStamped, Vector3
 def transform_from_marker(m):
     t = TransformStamped()
     t.header.frame_id = 'map'
-    t.child_frame_id = 'world/roadsign' + str(m['id'])
+    t.child_frame_id = 'world/roadsign_' + str(m['sign'])
     t.transform.translation = Vector3(*m['pose']['position'])
     roll, pitch, yaw = m['pose']['orientation']
     (t.transform.rotation.x,

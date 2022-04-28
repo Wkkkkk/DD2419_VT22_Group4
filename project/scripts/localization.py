@@ -14,6 +14,8 @@ from geometry_msgs.msg import Pose, PoseStamped, TransformStamped, Vector3
 from aruco_msgs.msg import MarkerArray
 import networkx as nx
 
+from detector_node_with_pose_est import categories
+
 
 def pose_from_transform(t):
     """Convert a C{geometry_msgs/TransformStamped} into Pose
@@ -229,6 +231,43 @@ class Localization(object):
         self.kf = KalmanFilter()
         self.matcher = matcher
 
+    def sign_callback(self, msg):
+        detections = msg.detections
+        for detection in detections:
+            sign_id = detection.id
+            if not sign_id in categories:
+                print("Unknown id:", sign_id)
+                continue
+
+            sign_category = categories[sign_id]
+            print("We have a sign:", sign_id, sign_category)
+            if not self.tf_buffer.can_transform('map', 'world/roadsign_' + sign_category, rospy.Time(), rospy.Duration(3.0)):
+                print("Can't find sign in the world", sign_category)
+                continue
+
+            # Find sign position in map frame
+            m = self.tf_buffer.lookup_transform('map',
+                                                'world/roadsign_' + sign_category,
+                                                rospy.Time(),
+                                                rospy.Duration(3.0))
+            # Find sign position in odom frame
+            o = self.tf_buffer.lookup_transform('cf1/odom',
+                                                'detector/detectedsign_' + sign_category,
+                                                rospy.Time(),
+                                                rospy.Duration(3.0))
+            M = hcmatrix_from_transform(m)
+            O = hcmatrix_from_transform(o)
+            O_inv = np.linalg.inv(O)
+
+            # Calculate transform
+            T = np.dot(M, O_inv)
+            transform = transform_from_hcmatrix(T, 'map', 'cf1/odom')
+            #print(transform)
+            self.transform = self.kf.update(transform)
+
+            # ready to take off
+            self.initialization.publish(Empty())
+
 
     def marker_callback(self, msg):
         markers = msg.markers
@@ -293,6 +332,7 @@ def main(argv=sys.argv):
     rospy.init_node('localization')
     localization = Localization(matcher)
     aruco_subscriber = rospy.Subscriber('/aruco/markers', MarkerArray, localization.marker_callback)
+    sign_subscriber  = rospy.Subscriber('/detected_sign', DetectionArray, localization.sign_callback)
     broadcaster = tf2_ros.StaticTransformBroadcaster()
     broadcaster.sendTransform(transforms)
 
