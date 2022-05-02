@@ -10,31 +10,35 @@ from geometry_msgs.msg import PoseStamped, Point
 
 class Crazyflie:
     def __init__(self, prefix="cf1"):
-        self.height = 0.4  # Height at which the drone should fly at
 
         self.prefix = prefix
+
+        # Transform class object
         self.tf = Transform()
 
-        self.current_pose = None
-        self.rate = rospy.Rate(10)
-
+        # Initialize subscirber
         self.sub = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
 
+        # Initialize publishers
         self.pub_position = rospy.Publisher(prefix + "/cmd_position", Position, queue_size=1)
-        """ Initializing Position message for publishing position commands """
+        self.stop_pub = rospy.Publisher(prefix + "/cmd_stop", Empty, queue_size=1)
+
+        # Initialize messages
         self.position_msg = Position()
         self.position_msg.header.seq = 0
         self.position_msg.header.frame_id = 'c1/odom'
         self.position_msg.header.stamp = rospy.Time.now()
 
-        """ Commands the drone to stop its rotors """
-        self.stop_pub = rospy.Publisher(prefix + "/cmd_stop", Empty, queue_size=1)
         self.stop_msg = Empty()
 
+        # Initialize variables
         self.hover_timer = None
+        self.current_pose = None
+        self.rate = rospy.Rate(10)
 
-    def goTo(self, goal, vel = 0.2):
+    def goTo(self, goal, vel=0.25):
         """ Action to make drone fly straight to a set point at a velocity determined by vel """
+
         start_pose = self.current_pose
 
         pos_tol = 0.05  # Tolerance of difference in position
@@ -47,12 +51,12 @@ class Crazyflie:
         goal_array = np.array([goal.x, goal.y, goal.z])
 
         while not rospy.is_shutdown() and np.linalg.norm(goal_array - position_array) > pos_tol:
-            """ Calculates the next position at dt seconds later """
+            # Calculates the next position at dt seconds later
             diff = goal_array - position_array
             norm_diff = diff/np.linalg.norm(diff)
             position_array += dt*vel * norm_diff
 
-            """ Publish the next position """
+            # Publish the next position
             self.position_msg.x = position_array[0]
             self.position_msg.y = position_array[1]
             self.position_msg.z = position_array[2]
@@ -62,7 +66,7 @@ class Crazyflie:
 
             rospy.sleep(dt)
 
-        """ Hover for a while """
+        # Hover for a while
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
@@ -94,35 +98,52 @@ class Crazyflie:
         self.rate.sleep()
 
     def takeOff(self, goal_height):
-        """ Make drone take off from the ground to a certain height """
+        """ Make drone take off from the ground to a specified height """
         start_pose = self.current_pose
 
         self.position_msg.x = start_pose.pose.position.x
         self.position_msg.y = start_pose.pose.position.y
         self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
-
-        height = start_pose.pose.position.z
         tol = 0.05
-        dt = 0.2
-        vel = 0.5
-        while not rospy.is_shutdown() and (goal_height - self.current_pose.pose.position.z) > tol:
-            """ Calculates the next height at dt seconds later """
-            height_diff = goal_height - height
-            height += dt*vel*height_diff
 
-            """ Publish the next height """
-            self.position_msg.z = height
+        # height = start_pose.pose.position.z
+        # dt = 0.1
+        # dz = 0.02
+        # vel = 0.3
+        # while not rospy.is_shutdown() and abs(goal_height - self.current_pose.pose.position.z) > tol:
+        #     # Calculates the next height at dt seconds later
+        #     #height_diff = goal_height - self.current_pose.pose.position.z
+        #     #height += dt*vel*height_diff
+        #     height += dz
+        #     # Publish the next height
+        #     self.position_msg.z = height
+        #     self.position_msg.header.seq += 1
+        #     self.position_msg.header.stamp = rospy.Time.now()
+        #     self.pub_position.publish(self.position_msg)
+        #     rospy.sleep(dt)
+
+
+        for t in range(10):
+            self.position_msg.z = t / 25
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
-            rospy.sleep(dt)
+            self.rate.sleep()
+        while not rospy.is_shutdown() and abs(goal_height - self.current_pose.pose.position.z) > tol:
+            # Publish the next height
+            self.position_msg.z = goal_height
+            self.position_msg.header.seq += 1
+            self.position_msg.header.stamp = rospy.Time.now()
+            self.pub_position.publish(self.position_msg)
+            self.rate.sleep()
 
-        """ Hover for a while """
+
+        # Hover for a while
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
-            if (now - start > 2):
+            if now - start > 2:
                 break
             self.position_msg.z = goal_height
             self.position_msg.header.stamp = rospy.Time.now()
@@ -131,6 +152,7 @@ class Crazyflie:
 
     def rotate(self, goal_yaw, yawrate=30):
         """ Rotate the drone to a desired yaw at a rate determined by yawrate """
+
         start_pose = self.current_pose
         yawrate = abs(yawrate)
 
@@ -144,16 +166,15 @@ class Crazyflie:
 
         yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         while not rospy.is_shutdown() and self.yaw_difference(goal_yaw, yaw) > yaw_tol:
-            """ Calculates the next yaw at dt seconds later """
-            #current_yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
+            # Calculates the next yaw at dt seconds later
             angular_diff = np.mod((goal_yaw - yaw + 180), 360) - 180
             yaw += dt*yawrate*np.sign(angular_diff)
 
-            """ Forces yaw to stay within the interval [-180, 180] degrees """
+            # Forces yaw to stay within [-180, 180] degrees
             if abs(yaw) > 180:
                 yaw += -np.sign(yaw)*360
 
-            """ Publish the next yaw """
+            # Publish the next yaw
             self.position_msg.yaw = yaw
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
@@ -161,11 +182,11 @@ class Crazyflie:
 
             rospy.sleep(dt)
 
-        """ Hover for a while """
+        # Hover for a while
         start = rospy.get_time()
         while not rospy.is_shutdown():
             now = rospy.get_time()
-            if now - start > 3:
+            if now - start > 2:
                 break
             self.position_msg.yaw = goal_yaw
             self.position_msg.header.stamp = rospy.Time.now()
@@ -182,18 +203,18 @@ class Crazyflie:
         self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
 
-        landing_height = 0.1  # Height at which to stop the rotors of the drone
+        landing_height = 0.1  # Height at which to stop the motors
         tol = 0.05
         vel = 0.3
-        dt = 0.1
-
+        dt = 0.2
+        dz = -0.02
         height = start_pose.pose.position.z
-        while not rospy.is_shutdown() and (self.current_pose.pose.position.z - landing_height) > tol:
-            """ Calculates the next height at dt seconds later """
-            height_diff = landing_height - height
-            height += dt*vel*height_diff
-
-            """ Publish the next height """
+        while not rospy.is_shutdown() and abs(self.current_pose.pose.position.z - landing_height) > tol:
+            # Calculates the next height at dt seconds later
+            #height_diff = landing_height - height
+            #height += dt*vel*height_diff
+            height += dz
+            # Publish the next height
             self.position_msg.z = height
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
@@ -201,11 +222,13 @@ class Crazyflie:
 
             rospy.sleep(dt)
 
-        self.stop_pub.publish(self.stop_msg)  # Stop rotors
+        self.stop_pub.publish(self.stop_msg)  # Stop motors
 
-    def yaw_difference(self, goal_yaw, yaw):
+    def yaw_difference(self, goal_yaw, yaw=None):
         """ Calculates difference between current yaw and goal yaw """
-        #current_yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
+        if yaw is None:
+            yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
+
         return abs(np.mod((goal_yaw - yaw + 180), 360) - 180)
 
     def pose_callback(self, msg):
@@ -221,25 +244,27 @@ if __name__ == '__main__':
     while not rospy.is_shutdown() and cf.current_pose is None:
         continue
 
-    cf.takeOff(0.5)
+    cf.takeOff(0.4)
+    cf.land()
 
     # yaw = np.degrees(cf.tf.quaternion2yaw(cf.current_pose.pose.orientation))
     # for r in range(3):
     #     yaw += 90
     #     cf.rotate(yaw, 30)
-    goal = Position()
-    goal.x = cf.current_pose.pose.position.x + 1
-    goal.y = cf.current_pose.pose.position.y
-    goal.z = cf.current_pose.pose.position.z
-    cf.goTo(goal)
+    # goal = Position()
+    # goal.x = cf.current_pose.pose.position.x + 1
+    # goal.y = cf.current_pose.pose.position.y
+    # goal.z = cf.current_pose.pose.position.z
+    # cf.goTo(goal)
 
-    yaw = cf.tf.quaternion2yaw(cf.current_pose.pose.orientation)
-    cf.rotate(yaw+180,30)
-    goal.x = cf.current_pose.pose.position.x - 1
-    goal.y = cf.current_pose.pose.position.y
-    goal.z = cf.current_pose.pose.position.z
-    cf.goTo(goal)
-    cf.land()
+    # yaw = cf.tf.quaternion2yaw(cf.current_pose.pose.orientation)
+    # cf.rotate(yaw+180,30)
+    # goal.x = cf.current_pose.pose.position.x - 1
+    # goal.y = cf.current_pose.pose.position.y
+    # goal.z = cf.current_pose.pose.position.z
+    # cf.goTo(goal)
+    # print("Ready to land")
+    # cf.land()
 
     # goal = Position()
     # goal.x = 3.0
