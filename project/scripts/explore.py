@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from grid_map import GridMap
-from node import Node
 import numpy as np
 from transform import Transform
 import random
@@ -9,19 +7,28 @@ import itertools
 
 
 class Explore:
+    """ Class used for exploring the world """
 
-    def __init__(self, grid, current_pose):
+    def __init__(self, grid, start_pose):
         self.grid = grid
         self.loc_clusters = self.grid.loc_clusters
         self.e_map = grid.reset_exploration_map()
+
+        # Range of which the drone can observe translated to grid map index
         self.range = int(0.5/self.grid.resolution)
 
-        self.exploration_mode = 10
+        # Modes of exploration
+        self.random_mode = 10
         self.localization_mode = 20
-        self.mode = self.localization_mode
 
-        current_position = np.array([current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z])
-        self.current_index = self.grid.convert_to_index(current_position)
+        # Starting position of the drone
+        start_position = np.array([start_pose.pose.position.x,
+                                   start_pose.pose.position.y,
+                                   start_pose.pose.position.z])
+
+        # Initialize exploration
+        self.mode = self.localization_mode
+        self.current_index = self.grid.convert_to_index(start_position)
         score, explored_cells = self.exploration(self.current_index)
         for index in explored_cells:
             self.e_map[index[0]][index[1]] = 0
@@ -29,6 +36,8 @@ class Explore:
 
 
     def get_random_poses(self):
+        """ Generate N random poses """
+
         N = 30
         rand_poses = np.empty(N, dtype=object)
         np.random.seed(2020)
@@ -41,6 +50,9 @@ class Explore:
                         np.linalg.norm(self.current_index-rand_index) > 2*self.range:
                     break
             rand_pose = self.grid[rand_index]
+
+            # Set the yaw of the random pose to a yaw that observes a landmark
+            # if the random position coincides with a "localization position"
             loc_yaw = []
             for cluster in self.loc_clusters:
                 for loc_pose in cluster:
@@ -55,12 +67,18 @@ class Explore:
         return rand_poses
 
     def get_localization_pose(self):
+        """ Choose one of the "localization poses" to make the drone fly in front of a landmark """
+
         loc_poses = list(itertools.chain.from_iterable(self.loc_clusters))
+
+        # Only keep the poses that are 2*range away from the current position
         filtered_poses = list(filter(lambda pose : np.linalg.norm(pose.index-self.current_index) > 2*self.range, loc_poses))
+
+        # Sort the poses based on distance from the current position
         sorted_poses = sorted(filtered_poses, key=lambda pose: np.linalg.norm(pose.index-self.current_index))
 
+        # Choose the nearest pose that is not occluded by an obstacle
         next_pose = None
-
         for i, pose in enumerate(sorted_poses):
             if not self.grid.raytrace(pose.index, self.current_index):
                 same_spot = []
@@ -80,6 +98,8 @@ class Explore:
         return next_pose
 
     def exploration(self, center_index):
+        """ Calculate exploration score and return the grid cells that have been explored """
+
         self.grid.force_in_bounds(center_index)
 
         x_max = center_index[0] + self.range
@@ -87,6 +107,8 @@ class Explore:
         x_min = center_index[0] - self.range
         y_min = center_index[1] - self.range
 
+        # Divide all the cells to free cells and c cells (padding),
+        # within a radius equal to self.range from the current index
         free_cells = []
         c_cells = []
         for y in range(y_min, y_max + 1):
@@ -101,12 +123,14 @@ class Explore:
         explored_cells = []
         explored_cells.append(center_index)
 
+        # Sum the score for all free cells in the circle
         score = 0
         for index in free_cells:
             if not self.grid.raytrace(center_index, index):
                 score += self.e_map[index[0]][index[1]]
                 explored_cells.append(index)
 
+        # Sum the score of all c cells in the circle that have no obstacle in the way
         for index in c_cells:
             traversed = self.grid.raytrace(center_index, index, True)
             for cell in traversed:
@@ -116,6 +140,7 @@ class Explore:
                         explored_cells.append(index)
                     break
 
+        # Add another score inversely proportional to the distance from the current position
         dist = np.linalg.norm(self.current_index - center_index)
         dist_weight = 10 / self.grid.resolution
         if dist != 0 and score > 0:
@@ -123,51 +148,63 @@ class Explore:
         return score, explored_cells
 
     def next_goal(self, current_pose):
-        current_position = np.array([current_pose.pose.position.x, current_pose.pose.position.y, current_pose.pose.position.z])
+        """ Generates the next exploration goal based on the current pose """
+
+        current_position = np.array([current_pose.pose.position.x,
+                                     current_pose.pose.position.y,
+                                     current_pose.pose.position.z])
         self.current_index = self.grid.convert_to_index(current_position)
 
         valid_goal = False
-        max_pose = None
-        max_score = 0
+        best_pose = None
+        best_score = 0
         count = 0
 
-        if self.mode == self.exploration_mode:
+        # enerate random poses if in random mode and select the pose with the highest score
+        if self.mode == self.random_mode:
+            print("********** Random mode **********")
+
+            self.mode = self.localization_mode
+
             while not valid_goal and count < 5:
                 rand_poses = self.get_random_poses()
-                max_pose = rand_poses[0]
-                max_score, explored_cells = self.exploration(max_pose.index)
+                best_pose = rand_poses[0]
+                best_score, explored_cells = self.exploration(best_pose.index)
                 for rand_pose in rand_poses[1:]:
                     score, cells = self.exploration(rand_pose.index)
-                    if score > max_score:
-                        max_score = score
-                        max_pose = rand_pose
+                    if score > best_score:
+                        best_score = score
+                        best_pose = rand_pose
                         explored_cells = cells
-                if max_score != 0:
-
+                if best_score != 0:
                     valid_goal = True
                 count += 1
 
-            self.mode = self.localization_mode
-            print("********** Random mode **********")
-            if valid_goal and max_score > 1 / self.grid.resolution:
+            # End exploration if score is below a threshold
+            if valid_goal and best_score > 1 / self.grid.resolution:
                 for index in explored_cells:
                     self.e_map[index[0]][index[1]] = 0
-                next_pose = self.tf.pose_stamped_msg(max_pose.position, max_pose.yaw)
+
+                next_pose = self.tf.pose_stamped_msg(best_pose.position, best_pose.yaw)
                 return next_pose
             else:
                 return None
 
         else:
-            self.mode = self.exploration_mode
+            # Select a localization pose if in localization mode
+
+            print("********** Localization mode **********")
+
+            self.mode = self.random_mode
+
             localization_pose = self.get_localization_pose()
             _, explored_cells = self.exploration(localization_pose.index)
+
             for index in explored_cells:
                 self.e_map[index[0]][index[1]] = 0
-            print("********** Localization mode **********")
+
             next_pose = self.tf.pose_stamped_msg(localization_pose.position, localization_pose.yaw)
-            print("localization yaw (exploration): ", localization_pose.yaw)
             return next_pose
 
     def reset_map(self):
         self.e_map = self.grid.reset_exlporation_map()
-

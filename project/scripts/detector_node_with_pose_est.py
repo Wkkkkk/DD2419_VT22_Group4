@@ -2,14 +2,14 @@
 
 # An initial attempt for the detection node, I think it's better to convert it to a class (like in flight camp).
 from ast import Global
-from pickle import NONE
 import string
 from sys import flags
 from types import NoneType
 from PIL import Image
 import cv2
+from cv2 import SOLVEPNP_ITERATIVE
 from matplotlib import image
-from pytz import InvalidTimeError
+from matplotlib.pyplot import flag
 from cv_bridge import CvBridge, CvBridgeError
 from PIL import Image as Img
 from sensor_msgs.msg import Image, CameraInfo
@@ -27,6 +27,7 @@ import os
 import numpy as np
 import time
 import math
+import random
 # from msg import Detected
 
 dir = os.path.abspath(os.getcwd())
@@ -85,7 +86,7 @@ def callback(Image):
     #   bbs = detector(detect_images)
     with torch.no_grad():
         out = detector(detect_images)
-        bbs = detector.decode_output(out, 0.95)
+        bbs = detector.decode_output(out, 0.98) #test 0.99??
 
 
         # Uncomment this part to test if it publishes the tranform for detected sign
@@ -152,10 +153,10 @@ def bounding_box(detections, cv_image):
     # Pick box with highest confidance
     if len(detections[0]) != 0:
         bb = max(detections[0], key=lambda j:j["score"])
-        x = int(bb['x']) - 20
-        y = int(bb['y']) - 20
-        width = int(bb['width']) + 20
-        height = int(bb['height']) + 20
+        x = int(bb['x']) - int(bb['width']*0.05)
+        y = int(bb['y']) - int(bb['height']*0.05)
+        width = int(bb['width']) + int(bb['width']*0.05)
+        height = int(bb['height']) + int(bb['height']*0.05)
         classification = categories[bb['category']]
 
         bb_info = {'x': x, 'y': y, 'width': width, 'height': height, 'category': classification, 'id': bb['category'], 'confidence': bb["score"]}
@@ -231,7 +232,7 @@ def pose_estimation(camera_image, bb_info):
     y = bb_info['y']
     width = bb_info['width']
     height = bb_info['height']
-    rospy.loginfo(bb_info['id'])
+
     #???????????????????????????
     if currentid != bb_info['id']:
         tvec[0] = 0
@@ -353,16 +354,47 @@ def pose_estimation(camera_image, bb_info):
     #a = np.ascontiguousarray(a, dtype=np.uint8)
     #b = np.ascontiguousarray(b, dtype=np.uint8)
 
-    if tvec[0] == 0:
-        retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
 
-    #else:
-     #   retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
-    retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
 
-    rvec[2] = 0
-    rvec[0] = -math.pi/2
-    if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 2:# or type(inliers) == NoneType:
+    ####if tvec[0] == 0:
+    ####    retval, rvec, tvec = cv2.solvePnP(object_points[:5], image_points[:5], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
+####
+    #####else:
+    #### #   retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
+    ####retval, rvec, tvec = cv2.solvePnP(object_points[:5], image_points[:5], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
+    
+     
+    max_inliers = 0
+    #rvec,tvec,inliers = None, None, None
+    pairs = int(min(len(object_points), len(image_points)))
+    if pairs > 4:
+        for i in range(25):
+            obj_samp, img_samp = zip(*random.sample(list(zip(object_points, image_points)), pairs))
+            obj_samp = np.array([k for k in obj_samp])
+            img_samp = np.array([j for j in img_samp])
+            #if tvec[0] != 0:
+            #    _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist, rvec=rvec,tvec=tvec,flags=SOLVEPNP_ITERATIVE, useExtrinsicGuess=True)
+            #else:
+            #    _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist,flags=SOLVEPNP_ITERATIVE)
+            _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist,flags=SOLVEPNP_ITERATIVE)
+
+            if in_liers is not None:
+                n_in = len(in_liers)
+                if n_in > max_inliers:
+                    max_inliers = n_in
+                    print(max_inliers)
+                    rvec, tvec, inliers = r_vec, t_vec, in_liers
+            #else:
+            #    rvec, tvec, inliers = r_vec, t_vec, in_liers
+            #    break
+
+
+    #rvec[2] = 0
+    #rvec[0] = -math.pi/2
+    if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 3:# or type(inliers) == NoneType:
+        tvec[0] = 0
+        return
+    if tvec[0]**2 + tvec[1]**2 +tvec[2]**2< 0.1**2:
         tvec[0] = 0
         return
     if tvec[2] < 0: #outlier :))))))
@@ -412,7 +444,6 @@ def pose_estimation(camera_image, bb_info):
     sign_pose.pose.orientation.w = w
 
     publish_pose(sign_pose, bb_info['id'], bb_info["category"], bb_info["confidence"])
-    rospy.loginfo("Publishiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiing!")
 
 
 def publish_pose(sign_pose, sign_id, category, confidence):

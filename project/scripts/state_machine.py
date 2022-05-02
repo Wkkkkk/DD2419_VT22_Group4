@@ -6,7 +6,7 @@ import rospy
 import numpy as np
 
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Empty, Bool
+from std_msgs.msg import Empty
 import enum
 from grid_map import GridMap
 from path_planner import Planner
@@ -26,36 +26,37 @@ class State(enum.Enum):
 
 
 class StateMachine(object):
+    """ State machine for mission planning and execution """
+
     def __init__(self, argv=sys.argv):
         rospy.loginfo("Initializing state machine")
+
         # Initialize map
         args = rospy.myargv(argv=argv)
         with open(args[1], 'rb') as f:
             world = json.load(f)
 
-        self.height = 0.4
+        self.height = 0.4  # Height at which to fly
 
+        # Initialize class objects
         self.grid = GridMap(0.2, world, self.height)
         self.path_executer = PathExecution()
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
+        self.path_planner = Planner(self.grid)
 
-        self.next_pose = None
-        self.current_pose = None
-
-        # Subscribe to topics
+        # Initialize subscriber
         self.sub_pose = rospy.Subscriber('/cf1/pose', PoseStamped, self.pose_callback)
 
+        # Initialize exploration with starting pose
+        self.current_pose = None
         self.wait_for_pose()
         self.start_pose = self.tf.transform2map(self.current_pose)
         self.explore = Explore(self.grid, self.start_pose)
-        self.path_planner = Planner(self.grid)
-
-        self.tol = 0.05
-        self.rate = rospy.Rate(10)
 
         # Initialize state machine
         self.state = State.Init
+        self.next_pose = None
 
         rospy.loginfo("state machine initialzed")
         self.states()
@@ -63,15 +64,16 @@ class StateMachine(object):
     def states(self):
         # Wait for localization to be initialized
         rospy.wait_for_message('is_initialized', Empty)
+
         rospy.loginfo("Taking off")
         while not rospy.is_shutdown():
 
-            # State 1: lift off and hover
+            # State 1: lift off
             if self.state == State.Init:
                 self.cf.takeOff(self.height)
                 self.state = State.RotateAndSearchForIntruder
 
-            # State 2: Generate next exploration goal from explorer
+            # State 2: Generate next exploration goal
             if self.state == State.GenerateExplorationGoal:
                 rospy.loginfo("Generating the next exploration goal")
                 self.start_pose = self.tf.transform2map(self.current_pose)
@@ -92,7 +94,7 @@ class StateMachine(object):
                 self.path_executer.execute_path(path)
                 self.state = State.RotateAndSearchForIntruder
 
-            # State 4: Rotate 90 degrees and hover a while while waiting for intruder detection
+            # State 4: Rotate and hover a while while waiting for intruder detection
             if self.state == State.RotateAndSearchForIntruder:
                 rospy.loginfo("Checks for intruders")
                 yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
@@ -101,7 +103,6 @@ class StateMachine(object):
                     yaw = np.mod((yaw + 180), 360) - 180
                     self.cf.rotate(yaw)
 
-                # self.cf.rotate()
                 self.state = State.GenerateExplorationGoal
                 self.cf.start_hovering()
 
@@ -115,10 +116,12 @@ class StateMachine(object):
         rospy.loginfo("State machine finished!")
 
     def wait_for_pose(self):
+        """ Wait for most recent pose to arrive """
         while not rospy.is_shutdown() and self.current_pose is None:
             continue
 
     def pose_callback(self, msg):
+        """ Retrieves the current pose of the drone in odometry frame """
         self.current_pose = msg
 
 

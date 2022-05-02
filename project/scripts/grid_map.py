@@ -5,42 +5,53 @@ import numpy as np
 from node import Node
 from tf.transformations import euler_matrix
 
+
 class GridMap:
+    """ Class used to generate a 2D occupancy grid and an exploration map """
     def __init__(self, safety_radius, world, height):
+
+        # Grid map parameters
         self.bounds = [np.array(world['airspace']["min"]), np.array(world['airspace']["max"])]
-        self.height = height
-        self.resolution = (self.bounds[1][0] - self.bounds[0][0])/30
-
+        self.resolution = (self.bounds[1][0] - self.bounds[0][0]) / 30
         self.dim = ((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
-
         self.occupied_space = 1
         self.c_space = 2
         self.safety_radius = safety_radius
-        self.resolution = (self.bounds[1][0] - self.bounds[0][0]) / 20
-        self.dim = ((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
 
+        self.height = height  # Height at which the drone should fly.
+
+        # Creating the occupancy grid map and the exploration map
         self.map, self.explore_map = self.create_map(world['walls'])
 
+        # Generating poses for localization
         self.loc_clusters = self.get_localization_poses(world['markers'], world['roadsigns'])
 
     def __getitem__(self, index):
+        """ Get value of grid map cell """
         x, y = index
         return self.map[x][y]
 
     def __setitem__(self, index, val):
+        """ Set value of grid map cell """
         x, y = index
         self.map[x][y] = val
 
     def convert_to_index(self, pos):
+        """ Convert world coordinates to index in grid map """
         float_index = (pos[0:2] - self.bounds[0][0:2])/self.resolution
         return float_index.astype(int)
 
     def create_map(self, walls):
+        """ Creates the maps """
+
+        # Initialize maps
         map = np.empty((self.dim[0], self.dim[1]), dtype=object)
         explore_map = np.ones((self.dim[0], self.dim[1]), dtype=object)
 
+        # Padding added to obstacles
         padding = int(round(self.safety_radius/self.resolution))
 
+        # Sets the grid cell values
         for wall in walls:
             v1 = np.array(wall["plane"]["start"][0:2])
             v2 = np.array(wall["plane"]["stop"][0:2])
@@ -63,6 +74,7 @@ class GridMap:
                                 map[x][y] = self.c_space
                                 explore_map[x][y] = 3
 
+        # Nodes are inserted in cells that are empty, which are used for A*
         for x in range(0, self.dim[0]):
             for y in range(0, self.dim[1]):
                 if map[x][y] != self.occupied_space and map[x][y] != self.c_space:
@@ -71,7 +83,10 @@ class GridMap:
         return map, explore_map
 
     def raytrace(self, start, end, returnList=False):
-        """ Bresenham's line algorithm """
+        """ Bresenham's line algorithm
+
+        If returnList is True, return a list containing all the traversed cells,
+        otherwise return a boolean dependning on if there is a collision or not. """
         x_start, y_start = start
         x_end, y_end = end
         (dx, dy) = (fabs(x_end - x_start), fabs(y_end - y_start))
@@ -121,41 +136,48 @@ class GridMap:
             return False
 
     def landmark_poses(self, landmark):
+        """ Generates all drone poses where a landmark can be observed well """
+
         landmark_pos = landmark['pose']['position']
         orientation = landmark['pose']['orientation']
+
         landmark_index = self.convert_to_index(landmark_pos)
         self.force_in_bounds(landmark_index)
 
+        # Transformation matrix with a translation and a rotation
         M = euler_matrix(np.deg2rad(orientation[0]), np.deg2rad(orientation[1]), np.deg2rad(orientation[2]), axes='sxyz')
         M[:3, 3] = landmark_pos
 
-        obs_pos_min = np.array([0, 0.3, -0.2, 1])
-        obs_pos_max = np.array([0, 0.6, 0.2, 1])
+        # The lower leftmost and upper rightmost position of the drone from the landmark's perspective
+        pos_left = np.array([0, 0.3, -0.2, 1])
+        pos_right = np.array([0, 0.6, 0.2, 1])
+        left_index = self.convert_to_index(np.dot(M, pos_left))
+        right_index = self.convert_to_index(np.dot(M, pos_right))
+        self.force_in_bounds(left_index)
+        self.force_in_bounds(right_index)
 
-        min_index = self.convert_to_index(np.dot(M, obs_pos_min))
-        max_index = self.convert_to_index(np.dot(M, obs_pos_max))
-        self.force_in_bounds(min_index)
-        self.force_in_bounds(max_index)
-
-        x_min = min_index[0]
-        x_max = max_index[0]
+        # Calculating the lowest and highest index
+        x_min = left_index[0]
+        x_max = right_index[0]
         if x_min > x_max:
             swap = x_min
             x_min = x_max
             x_max = swap
-        y_min = min_index[1]
-        y_max = max_index[1]
+        y_min = left_index[1]
+        y_max = right_index[1]
         if y_min > y_max:
             swap = y_min
             y_min = y_max
             y_max = swap
         poses = []
 
+        # Calculating the yaw in the direction towards the landmark
         y_axis = np.array([0, 1, 0, 1])
         y_trans = np.dot(M, y_axis)
         direction = landmark_pos[0:2] - y_trans[0:2]
         yaw = round(np.rad2deg(atan2(direction[1], direction[0])))
-        print("yaw: ", yaw)
+
+        # Calculating all positions where you can observe the landmark
         for x in range(x_min, x_max+1):
             for y in range(y_min, y_max+1):
                 if self.is_free_space([x, y]):
@@ -167,6 +189,7 @@ class GridMap:
         return poses
 
     def force_in_bounds(self, index):
+        """ Force the index inside the grid map """
         if index[0] > self.dim[0] - 1:
             index[0] = self.dim[0] - 1
         if index[1] > self.dim[1] - 1:
@@ -177,6 +200,9 @@ class GridMap:
             index[1] = 0
 
     def get_localization_poses(self, markers, signs):
+        """ Get the poses for observing all the landmarks.
+
+        The clusters are the respective list of poses belonging to each landmark. """
         loc_clusters = []
         for marker in markers:
             poses = self.landmark_poses(marker)
@@ -187,22 +213,25 @@ class GridMap:
         return loc_clusters
 
     def is_in_bounds(self, index):
+        """ Check if the index is inside the grid map """
         if index[0] < 0 or index[1] < 0 or index[0] >= self.dim[0] or index[1] >= self.dim[1]:
             return False
         else:
             return True
 
     def is_free_space(self, index):
+        """ Check if the index is in free space """
         if self.map[index[0]][index[1]] == self.occupied_space or self.map[index[0]][index[1]] == self.c_space:
             return False
         else:
             return True
 
     def index_to_world(self, index, z):
+        """ Convert grid map index to world coordinates """
         pos2D = self.bounds[0][0:2] + self.resolution*index + np.ones(2)*self.resolution/2
         pos3D = np.append(pos2D, z)
         return pos3D
 
     def reset_exploration_map(self):
         return self.explore_map.copy()
-
+    
