@@ -30,6 +30,7 @@ class GridMap:
 
     def __getitem__(self, index):
         """ Get value of grid map cell """
+
         x, y = index
         return self.map[x][y]
 
@@ -63,7 +64,7 @@ class GridMap:
             occupied_cells = self.raytrace(index1, index2, True)
 
             for cell in occupied_cells:
-                if self.is_in_bounds(cell):
+                if self.index_in_bounds(cell):
                     map[cell[0]][cell[1]] = self.occupied_space
                     explore_map[cell[0]][cell[1]] = 0
                     x_min = cell[0] - padding
@@ -72,7 +73,7 @@ class GridMap:
                     y_max = cell[1] + padding
                     for x in range(x_min, x_max + 1):
                         for y in range(y_min, y_max + 1):
-                            if self.is_in_bounds([x, y]) and map[x][y] != self.occupied_space:
+                            if self.index_in_bounds([x, y]) and map[x][y] != self.occupied_space:
                                 map[x][y] = self.c_space
                                 explore_map[x][y] = 3
 
@@ -111,11 +112,11 @@ class GridMap:
                     p -= 2 * dx
                 p += 2 * dy
                 if returnList:
-                    if not self.is_in_bounds([x_start, y_start]):
+                    if not self.index_in_bounds([x_start, y_start]):
                         break
                     traversed.append(np.array([x_start, y_start]))
                 else:
-                    if not self.is_free_space([x_start, y_start]) or not self.is_in_bounds([x_start, y_start]):
+                    if not self.is_free_space([x_start, y_start]) or not self.index_in_bounds([x_start, y_start]):
                         return True
         elif dy >= dx:
             p = 2 * dx - dy
@@ -126,11 +127,11 @@ class GridMap:
                     p -= 2 * dy
                 p += 2 * dx
                 if returnList:
-                    if not self.is_in_bounds([x_start, y_start]):
+                    if not self.index_in_bounds([x_start, y_start]):
                         break
                     traversed.append(np.array([x_start, y_start]))
                 else:
-                    if not self.is_free_space([x_start, y_start]) or not self.is_in_bounds([x_start, y_start]):
+                    if not self.is_free_space([x_start, y_start]) or not self.index_in_bounds([x_start, y_start]):
                         return True
         if returnList:
             return traversed
@@ -214,9 +215,16 @@ class GridMap:
             loc_clusters.append(poses)
         return loc_clusters
 
-    def is_in_bounds(self, index):
+    def index_in_bounds(self, index):
         """ Check if the index is inside the grid map """
         if index[0] < 0 or index[1] < 0 or index[0] >= self.dim[0] or index[1] >= self.dim[1]:
+            return False
+        else:
+            return True
+
+    def coordinate_in_bounds(self, coord):
+        """ Check if coordinates is inside the world """
+        if coord[0] < self.bounds[0][0] or coord[1] < self.bounds[0][1] or coord[0] > self.bounds[1][0] or coord[1] > self.bounds[1][1]:
             return False
         else:
             return True

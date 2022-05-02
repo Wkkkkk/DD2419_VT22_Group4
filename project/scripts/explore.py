@@ -14,6 +14,8 @@ class Explore:
         self.loc_clusters = self.grid.loc_clusters
         self.e_map = grid.reset_exploration_map()
 
+        self.tf = Transform()
+
         # Range of which the drone can observe translated to grid map index
         self.range = int(0.5/self.grid.resolution)
 
@@ -22,9 +24,7 @@ class Explore:
         self.localization_mode = 20
 
         # Starting position of the drone
-        start_position = np.array([start_pose.pose.position.x,
-                                   start_pose.pose.position.y,
-                                   start_pose.pose.position.z])
+        start_position = self.tf.posestamped_to_array(start_pose)
 
         # Initialize exploration
         self.mode = self.localization_mode
@@ -32,7 +32,6 @@ class Explore:
         score, explored_cells = self.exploration(self.current_index)
         for index in explored_cells:
             self.e_map[index[0]][index[1]] = 0
-        self.tf = Transform()
 
     def get_random_poses(self):
         """ Generate N random poses """
@@ -113,7 +112,7 @@ class Explore:
         for y in range(y_min, y_max + 1):
             for x in range(x_min, x_max + 1):
                 circle_index = np.array([x, y])
-                if self.grid.is_in_bounds([x, y]) and np.linalg.norm(center_index - circle_index) <= self.range:
+                if self.grid.index_in_bounds([x, y]) and np.linalg.norm(center_index - circle_index) <= self.range:
                     if self.e_map[x][y] > 1:
                         c_cells.append(circle_index)
                     elif self.e_map[x][y] == 1:
@@ -149,9 +148,7 @@ class Explore:
     def next_goal(self, current_pose):
         """ Generates the next exploration goal based on the current pose """
 
-        current_position = np.array([current_pose.pose.position.x,
-                                     current_pose.pose.position.y,
-                                     current_pose.pose.position.z])
+        current_position = self.tf.posestamped_to_array(current_pose)
         self.current_index = self.grid.convert_to_index(current_position)
 
         valid_goal = False

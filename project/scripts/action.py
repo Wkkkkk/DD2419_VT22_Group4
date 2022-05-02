@@ -47,7 +47,7 @@ class Crazyflie:
         self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
 
-        position_array = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
+        position_array = self.tf.posestamped_to_array(start_pose)
         goal_array = np.array([goal.x, goal.y, goal.z])
 
         while not rospy.is_shutdown() and np.linalg.norm(goal_array - position_array) > pos_tol:
@@ -123,13 +123,6 @@ class Crazyflie:
         #     self.pub_position.publish(self.position_msg)
         #     rospy.sleep(dt)
 
-
-        for t in range(10):
-            self.position_msg.z = t / 25
-            self.position_msg.header.seq += 1
-            self.position_msg.header.stamp = rospy.Time.now()
-            self.pub_position.publish(self.position_msg)
-            self.rate.sleep()
         while not rospy.is_shutdown() and abs(goal_height - self.current_pose.pose.position.z) > tol:
             # Publish the next height
             self.position_msg.z = goal_height
@@ -137,7 +130,6 @@ class Crazyflie:
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
             self.rate.sleep()
-
 
         # Hover for a while
         start = rospy.get_time()

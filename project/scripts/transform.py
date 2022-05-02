@@ -88,3 +88,9 @@ class Transform:
         msg.yaw = np.rad2deg(self.quaternion2yaw(m.pose.orientation))
         return msg
 
+    def posestamped_to_array(self, m):
+        x = m.pose.position.x
+        y = m.pose.position.y
+        z = m.pose.position.z
+        return np.array([x, y, z])
+

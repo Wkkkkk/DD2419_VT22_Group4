@@ -28,7 +28,7 @@ class Planner:
 
         # Finds the neighbours defined by 8 connectivity of a grid cell
         self.neighbours = lambda x, y: [self.grid[(i, j)] for i in range(x - 1, x + 2) for j in range(y - 1, y + 2)
-                                        if self.grid.is_in_bounds([i, j]) and not (i == x and j == y)
+                                        if self.grid.index_in_bounds([i, j]) and not (i == x and j == y)
                                         and self.grid.is_free_space([i, j])]
 
     def compute_cost(self, node):
@@ -179,10 +179,10 @@ class Planner:
         """ Generates nodes for start pose and goal pose and inserts them in the grid map """
 
         start_yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
-        start_pos = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
+        start_pos = self.tf.posestamped_to_array(start_pose)
 
         goal_yaw = self.tf.quaternion2yaw(goal_pose.pose.orientation)
-        goal_pos = np.array([goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z])
+        goal_pos = self.tf.posestamped_to_array(goal_pose)
 
         start = Node(self.grid.convert_to_index(start_pos), None, start_pos, start_yaw)
 
