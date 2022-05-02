@@ -86,7 +86,7 @@ def callback(Image):
     #   bbs = detector(detect_images)
     with torch.no_grad():
         out = detector(detect_images)
-        bbs = detector.decode_output(out, 0.95) #test 0.99??
+        bbs = detector.decode_output(out, 0.98) #test 0.99??
 
         # Uncomment this part to test if it publishes the tranform for detected sign
         #publish_detection(bbs, timestamp)
@@ -337,7 +337,7 @@ def pose_estimation(camera_image, bb_info):
 
     #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
     #cv2.imwrite('aaaaaaaaaaaaaaa.jpg', img3)
-    print("Matches: ", len(matches), "Min Distance; ", matches[0].distance)
+    # print("Matches: ", len(matches), "Min Distance; ", matches[0].distance)
     if len(matches) < 4:
         return
 

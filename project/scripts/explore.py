@@ -38,7 +38,7 @@ class Explore:
 
         N = 30
         rand_poses = np.empty(N, dtype=object)
-        np.random.seed(2020)
+        np.random.seed(1)
         for i in range(0, N):
             while True:
                 x_rand = np.random.randint(self.grid.dim[0])
@@ -177,15 +177,16 @@ class Explore:
                 count += 1
 
             # End exploration if score is below a threshold
-            if valid_goal and best_score > 1 / self.grid.resolution:
-
+            # if valid_goal and best_score > 1 / self.grid.resolution:
+            if valid_goal:
+                if best_score < 1 / self.grid.resolution:
+                    self.reset_map()
+                
                 for index in explored_cells:
                     self.e_map[index[0]][index[1]] = 0
 
                 next_pose = self.tf.pose_stamped_msg(best_pose.position, best_pose.yaw)
                 return next_pose
-            else:
-                return None
 
         else:
             # Select a localization pose if in localization mode
@@ -204,4 +205,4 @@ class Explore:
             return next_pose
 
     def reset_map(self):
-        self.e_map = self.grid.reset_exlporation_map()
+        self.e_map = self.grid.reset_exploration_map()

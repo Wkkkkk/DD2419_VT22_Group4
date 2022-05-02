@@ -338,6 +338,7 @@ def main(argv=sys.argv):
     matcher = Matcher(transforms)
 
     rospy.init_node('localization')
+    rospy.sleep(10)
     localization = Localization(matcher)
     aruco_subscriber = rospy.Subscriber('/aruco/markers', MarkerArray, localization.marker_callback)
     sign_subscriber  = rospy.Subscriber('/detected_sign', DetectionArray, localization.sign_callback)

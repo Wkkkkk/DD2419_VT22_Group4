@@ -36,10 +36,10 @@ class StateMachine(object):
         with open(args[1], 'rb') as f:
             world = json.load(f)
 
-        self.height = 0.4  # Height at which to fly
+        self.height = 0.5  # Height at which to fly
 
         # Initialize class objects
-        self.grid = GridMap(0.4, world, self.height)
+        self.grid = GridMap(0.5, world, self.height)
         self.path_executer = PathExecution()
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
@@ -67,6 +67,7 @@ class StateMachine(object):
 
         rospy.loginfo("Taking off")
         while not rospy.is_shutdown():
+            print("State:", self.state.name)
 
             # State 1: lift off
             if self.state == State.Init:
@@ -113,7 +114,7 @@ class StateMachine(object):
                 self.cf.stop_hovering()
                 self.cf.land()
                 break
-
+ 
         rospy.loginfo("State machine finished!")
 
     def wait_for_pose(self):
