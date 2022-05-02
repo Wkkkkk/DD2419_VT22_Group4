@@ -39,7 +39,7 @@ class StateMachine(object):
         self.height = 0.4  # Height at which to fly
 
         # Initialize class objects
-        self.grid = GridMap(0.2, world, self.height)
+        self.grid = GridMap(0.4, world, self.height)
         self.path_executer = PathExecution()
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
@@ -75,6 +75,7 @@ class StateMachine(object):
 
             # State 2: Generate next exploration goal
             if self.state == State.GenerateExplorationGoal:
+                self.wait_for_pose()
                 rospy.loginfo("Generating the next exploration goal")
                 self.start_pose = self.tf.transform2map(self.current_pose)
                 self.next_pose = self.explore.next_goal(self.start_pose)
@@ -117,12 +118,17 @@ class StateMachine(object):
 
     def wait_for_pose(self):
         """ Wait for most recent pose to arrive """
+        rospy.loginfo("Waiting for a valid pose!")
         while not rospy.is_shutdown() and self.current_pose is None:
             continue
 
     def pose_callback(self, msg):
         """ Retrieves the current pose of the drone in odometry frame """
-        self.current_pose = msg
+        coordinate = self.tf.posestamped_to_array(self.tf.transform2map(msg))
+        if self.grid.coordinate_in_bounds(coordinate):
+            self.current_pose = msg
+        # else:
+        #     self.current_pose = None
 
 
 if __name__ == '__main__':
@@ -133,4 +139,3 @@ if __name__ == '__main__':
         pass
 
     rospy.spin()
-

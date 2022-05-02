@@ -86,8 +86,7 @@ def callback(Image):
     #   bbs = detector(detect_images)
     with torch.no_grad():
         out = detector(detect_images)
-        bbs = detector.decode_output(out, 0.98) #test 0.99??
-
+        bbs = detector.decode_output(out, 0.95) #test 0.99??
 
         # Uncomment this part to test if it publishes the tranform for detected sign
         #publish_detection(bbs, timestamp)

@@ -47,7 +47,7 @@ class Crazyflie:
         self.position_msg.yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         self.position_msg.header.seq = 0
 
-        position_array = np.array([start_pose.pose.position.x, start_pose.pose.position.y, start_pose.pose.position.z])
+        position_array = self.tf.posestamped_to_array(start_pose)
         goal_array = np.array([goal.x, goal.y, goal.z])
 
         while not rospy.is_shutdown() and np.linalg.norm(goal_array - position_array) > pos_tol:
@@ -123,13 +123,6 @@ class Crazyflie:
         #     self.pub_position.publish(self.position_msg)
         #     rospy.sleep(dt)
 
-
-        for t in range(10):
-            self.position_msg.z = t / 25
-            self.position_msg.header.seq += 1
-            self.position_msg.header.stamp = rospy.Time.now()
-            self.pub_position.publish(self.position_msg)
-            self.rate.sleep()
         while not rospy.is_shutdown() and abs(goal_height - self.current_pose.pose.position.z) > tol:
             # Publish the next height
             self.position_msg.z = goal_height
@@ -137,7 +130,6 @@ class Crazyflie:
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
             self.rate.sleep()
-
 
         # Hover for a while
         start = rospy.get_time()
@@ -163,7 +155,7 @@ class Crazyflie:
 
         dt = 0.1
         yaw_tol = dt*abs(yawrate)  # tolerance based on publishing rate and yaw rate
-        print("goal yaw: ",goal_yaw)
+
         yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         while not rospy.is_shutdown() and self.yaw_difference(goal_yaw, yaw) > yaw_tol:
             # Calculates the next yaw at dt seconds later
@@ -179,7 +171,6 @@ class Crazyflie:
             self.position_msg.header.seq += 1
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
-            print("yaw: ",yaw)
 
             rospy.sleep(dt)
 
@@ -246,27 +237,26 @@ if __name__ == '__main__':
         continue
 
     cf.takeOff(0.4)
-    cf.land()
+    #cf.land()
 
     # yaw = np.degrees(cf.tf.quaternion2yaw(cf.current_pose.pose.orientation))
     # for r in range(3):
     #     yaw += 90
     #     cf.rotate(yaw, 30)
+    goal = Position()
+    goal.x = cf.current_pose.pose.position.x + 1
+    goal.y = cf.current_pose.pose.position.y
+    goal.z = cf.current_pose.pose.position.z
+    cf.goTo(goal)
 
-    # goal = Position()
-    # goal.x = cf.current_pose.pose.position.x + 1
-    # goal.y = cf.current_pose.pose.position.y
-    # goal.z = cf.current_pose.pose.position.z
-    # cf.goTo(goal)
-
-    # yaw = cf.tf.quaternion2yaw(cf.current_pose.pose.orientation)
-    # cf.rotate(yaw+180,30)
-    # goal.x = cf.current_pose.pose.position.x - 1
-    # goal.y = cf.current_pose.pose.position.y
-    # goal.z = cf.current_pose.pose.position.z
-    # cf.goTo(goal)
-    # print("Ready to land")
-    # cf.land()
+    yaw = cf.tf.quaternion2yaw(cf.current_pose.pose.orientation)
+    cf.rotate(yaw+180,30)
+    goal.x = cf.current_pose.pose.position.x - 1
+    goal.y = cf.current_pose.pose.position.y
+    goal.z = cf.current_pose.pose.position.z
+    cf.goTo(goal)
+    print("Ready to land")
+    cf.land()
 
     # goal = Position()
     # goal.x = 3.0
@@ -280,4 +270,3 @@ if __name__ == '__main__':
     # goal.x = 1.5
     # goal.y = -1
     # cf.goTo(goal)
-

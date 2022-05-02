@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 
 <launch>
-  <arg name="world_name" defalut="V"/>
+  <arg name="world_name" default="V"/>
 
   <node name="tf_base2camera" pkg="tf2_ros" type="static_transform_publisher" args="0.01 0 0.02 -1.57079633 0 -1.57079633 cf1/base_link cf1/camera_link" />
   <node name="tf_map2odom" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 map cf1/odom" />
@@ -10,9 +10,11 @@
   <!-- <node name="displaymaproadsigns" pkg="project" type="displaymaproadsigns.py" /> -->
 
   <node name="detectmarkers" pkg="project" type="detectmarkers.py" />
-  <node name="localization"  pkg="project" type="localization.py" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
+  <node name="localization"  pkg="project" type="localization.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
   <node name="base_footprint" pkg="project" type="footprint.py" />
 
   <node name="state_machine" pkg="project" type="state_machine.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
+  <node name="detector_with_pose_est" pkg="project" type="detector_node_with_pose_est.py"/>
+  <node name="Intruder_node" pkg="project" type="intruder_detection.py" output="screen" args="$(find dd2419_resources)/worlds_json/$(arg world_name).world.json"/>
 
 </launch>

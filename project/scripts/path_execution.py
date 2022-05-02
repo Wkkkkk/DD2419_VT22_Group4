@@ -15,12 +15,14 @@ class PathExecution:
         self.cf = Crazyflie()
 
     def execute_path(self, setpoints):
+
         tol_yaw = 10
 
         # Executing one set point in the path at a time.
         for setpoint in setpoints:
             goal_pose = self.tf.transform2odom(setpoint)
             goal_pose.header.seq = 0
+
             if goal_pose:
                 # Rotate if the difference between current yaw and set point yaw is greater than a tolerance.
                 if self.cf.yaw_difference(goal_pose.yaw) > tol_yaw:
