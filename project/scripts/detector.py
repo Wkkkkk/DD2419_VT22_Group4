@@ -22,7 +22,10 @@ NUM_CATEGORIES = 15
 is_rocm_pytorch = True
 
 class Detector(nn.Module):
-    """Baseline module for object detection."""
+    """Baseline module for object detection. One single network for both classification and detection
+    MobilnetV2 is a pretrained network used only to extract features, those features are then used to train the
+    network for detection and classification. Could have used two different networks for detection and classification
+    but would have had to extract features twice. Went for a single network as it seemed at first it would be faster."""
 
     def __init__(self):
         """Create the module.
