@@ -239,41 +239,18 @@ def pose_estimation(camera_image, bb_info):
 
     # Cropp image to only include bounding box info
     cropped_img = cv_gray[y:y+height, x:x+width]
-    #cropped_img = cv_gray
 
-    # Import the cannonical traffic sign based on detected class
-    #base_img = cv2.imread(dir + "traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
-    #base_img = cv2.imread("/home/clemente/dd2419_ws/src/project/scripts/traffic_signs/" + bb_info['category']  + ".jpg", cv2.IMREAD_COLOR)
-
-    # convert cannonical image to gray scale
-    #base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
-
-
-    #(h,w) = base_gray.shape[:2]
-    #base_gray = cv2.resize(base_gray, (int(w/6.458), int(h/6.458)))
-    #base_gray = base_gray[150:base_gray.shape[0]-150, :]
-
-    #TA BORT SENARE
-    #(h,w) = base_gray.shape[:2]
-    #base_gray = cv2.resize(base_gray, (int(w/10), int(h/10)))
 
     b_height, b_width = refs[bb_info['category']]['height'], refs[bb_info['category']]['width']
+
     # Initiate SIFT detector
     sift = cv2.xfeatures2d.SIFT_create()
-    #orb = cv2.ORB_create()
-    t = time.time()
 
     # find the keypoints and descriptors with SIFT for both images
-    ####kp1, des1 = sift.detectAndCompute(base_gray, None)
     kp1 = refs[bb_info['category']]['kp']
     des1 = refs[bb_info['category']]['des']
 
-    #kp1 = orb.detect(base_gray, None)
-    #kp2 = orb.detect(cropped_img, None)
-    #kp1 ,des1 = orb.compute(base_gray, kp1)
-    #kp2, des2 = orb.compute(cropped_img, kp2)
 
-    #print(time.time()-t)
     if cropped_img.size == 0 or type(cropped_img) == NoneType:
         return
     kp2, des2 = sift.detectAndCompute(cropped_img, None)
@@ -285,18 +262,9 @@ def pose_estimation(camera_image, bb_info):
 
     # Match descriptors with brute force
     matches = bf.knnMatch(des1,des2, 2)
-    #matches = bf.match(des1,des2)
     if len(matches) == 0:
         return
 
-    ##TEST FLANNNNNNN
-    #FLANN_INDEX_KDTREE = 0
-    #index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-    #search_params = dict(checks = 50)
-
-    #flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-    #matches = flann.knnMatch(des1,des2,k=2)
 
 
     matches = np.array(matches)
@@ -330,51 +298,24 @@ def pose_estimation(camera_image, bb_info):
     if matches.size == 0:
         return
 
-    #print(image_points[0])
-    #print(keypoints_2d[0].pt)
-    # Find rotation and translation vectors for pose estimation
-    #img3 = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
-
-    #img3 = cv2.drawMatches(base_gray,kp1,cropped_img,kp2,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    #cv2.imwrite('aaaaaaaaaaaaaaa.jpg', img3)
     # print("Matches: ", len(matches), "Min Distance; ", matches[0].distance)
     if len(matches) < 4:
         return
 
-    #FOR OTHER FLAGS, REMOVE OTHERWISE
-    #N,M = object_points.shape
-    #object_points = np.ascontiguousarray(object_points[:,:2]).reshape((N,1,2))
     N,M = image_points.shape
     image_points = np.ascontiguousarray(image_points[:,:2]).reshape((N,1,2))
     object_points.astype('float32')
-    #a= np.array([[0],[0],[0]])
-    #b=np.array([[0],[0],[0.4]])
-    #print(a)
-    #a = np.ascontiguousarray(a, dtype=np.uint8)
-    #b = np.ascontiguousarray(b, dtype=np.uint8)
 
-
-
-    ####if tvec[0] == 0:
-    ####    retval, rvec, tvec = cv2.solvePnP(object_points[:5], image_points[:5], mtx, dist,flags = cv2.SOLVEPNP_ITERATIVE)
-####
-    #####else:
-    #### #   retval, rvec, tvec = cv2.solvePnP(object_points[:], image_points[:], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
-    ####retval, rvec, tvec = cv2.solvePnP(object_points[:5], image_points[:5], mtx, dist,rvec= rvec,tvec=tvec, flags = cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess= True)
-    
-     
     max_inliers = 0
-    #rvec,tvec,inliers = None, None, None
+
+    #Use SolvePnPRansac to get the estimated pose.
     pairs = int(min(len(object_points), len(image_points)))
     if pairs > 4:
         for i in range(25):
             obj_samp, img_samp = zip(*random.sample(list(zip(object_points, image_points)), pairs))
             obj_samp = np.array([k for k in obj_samp])
             img_samp = np.array([j for j in img_samp])
-            #if tvec[0] != 0:
-            #    _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist, rvec=rvec,tvec=tvec,flags=SOLVEPNP_ITERATIVE, useExtrinsicGuess=True)
-            #else:
-            #    _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist,flags=SOLVEPNP_ITERATIVE)
+
             _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist,flags=SOLVEPNP_ITERATIVE)
 
             if in_liers is not None:
@@ -383,13 +324,10 @@ def pose_estimation(camera_image, bb_info):
                     max_inliers = n_in
                     print(max_inliers)
                     rvec, tvec, inliers = r_vec, t_vec, in_liers
-            #else:
-            #    rvec, tvec, inliers = r_vec, t_vec, in_liers
-            #    break
 
 
-    #rvec[2] = 0
-    #rvec[0] = -math.pi/2
+
+    #Remove some outliers, if estimated pose is NaN, far away or too close.
     if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 3:# or type(inliers) == NoneType:
         tvec[0] = 0
         return
@@ -402,37 +340,13 @@ def pose_estimation(camera_image, bb_info):
     if math.isnan(rvec[0]) or math.isnan(rvec[0]) or math.isnan(rvec[0]):
         tvec[0] = 0
         return
-    #rvec[2] = 0
 
-    #inliers = np.asarray(inliers).reshape(-1)
-    #print(inliers)
-    #EXTRA :)
-    #ke = cv2.KeyPoint(x = 0, y = 1, _size = 1)
-    #print(ke.pt)
-    #keypoints_2d[0].pt = ke.pt
-    #print(keypoints_2d[0].pt)
-    #img_kp = cv2.drawKeypoints(base_gray,keypoints_3d,cv2.DRAW_MATCHES_FLAGS_DEFAULT,color=(120,157,187))
-
-
-    #cv_gray = cv2.circle(cv_gray, (int(image_points[0][0]),int(image_points[0][1])), radius=0, color=(0, 0, 255), thickness=-1)
-    #cv_gray = cv2.circle(cv_gray, (int(image_points[1][0]),int(image_points[1][1])), radius=0, color=(0, 0, 255), thickness=-1)
-    #print(cv_gray.shape)
-    #cv2.imwrite('aaa.png', cv_gray)
-    #time.sleep(7)
-    #print("Printed!")
-    #print(keypoints_3d[0].pt)
-    #print("--------")
-    #print(keypoints_3d[1].pt)
-    #print("prriiiinted")
-
+    #Create PoseStamped message to store the estimated pose in.
     sign_pose = PoseStamped()
     sign_pose.header = Image_header
     sign_pose.header.frame_id = Image_header.frame_id
     sign_pose.header.stamp = Image_header.stamp
-    #print(tvec)
-    #sign_pose.pose.position.x = tvec[2]
-    #sign_pose.pose.position.y = -tvec[0]
-    #sign_pose.pose.position.z = -tvec[1]
+
     sign_pose.pose.position.x = tvec[0]
     sign_pose.pose.position.y = tvec[1]
     sign_pose.pose.position.z = tvec[2]
@@ -449,27 +363,20 @@ def publish_pose(sign_pose, sign_id, category, confidence):
     """ Creates the Transform from camera link to the detected sign and publishes to tf. Also
         creates a Detected_msg and DetectedArray_msg to post the pose for localization. """
 
+    #Store estimated pose in "DetectionArray_msg" and publish to /Detected_sign topic.
     Detected_msg = Detection()
     DetectedArray_msg = DetectionArray()
     trans = TransformStamped()
 
     Detected_msg.header.frame_id = sign_pose.header.frame_id
-    # trans.header.frame_id = 'map'
     Detected_msg.header.stamp = sign_pose.header.stamp
     trans.header.stamp = sign_pose.header.stamp
 
     trans.header.frame_id = 'cf1/camera_link'
-    # trans.header.frame_id = 'map'
     trans.child_frame_id = 'detector/detectedsign_' + category
     sign_pose.header.frame_id = "cf1/camera_link"
 
-    #   # marker pose is in frame camera_link
-    #if not tf_buf.can_transform('map', 'cf1/camera_link', sign_pose.header.stamp, rospy.Duration(1)):
-    #   rospy.logwarn('pose_estimation: No transform from %s to map', sign_pose.header.frame_id)
-    #   print("heeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeej ingen transform :(")
-    #   return
 
-    #sign_transform = tf_buf.transform(sign_pose, 'map')
     Detected_msg.pose.header.frame_id = sign_pose.header.frame_id
     Detected_msg.pose.pose.position.x = sign_pose.pose.position.x
     Detected_msg.pose.pose.position.y = sign_pose.pose.position.y
@@ -516,33 +423,14 @@ broadcaster = tf2_ros.TransformBroadcaster()
 is_rocm_pytorch = True
 device = torch.device('cuda')
 detector = Detector().to(device)
-#dataloader = utils.load_model(detector, "/home/miguelclemente/dd2419_ws/src/part3/scripts/det_2022-02-20_19-48-10-524174.pt" , device)
-#path = dir + "/scripts/det_2022-02-20_19-48-10-524174.pt"
+
 path = "/home/clemente/dd2419_ws/src/project/scripts/det_2022-04-01_10-48-59-587336.pt"
 dataloader = utils.load_model(detector, path, device)
 refs = reference_features()
 detector.eval()
 bridge = CvBridge()
-#min
-#mtx = np.array([[219.72672444 ,  0.     ,    327.75533564],
-#                [  0.     ,    217.82483989 ,240.2481643 ],
-#                [  0.   ,        0.    ,       1.        ]])
 
-# Distortion matrix
-#dist = np.array([ 0.14543323, -0.12488487,  0.02666364, -0.00334833,  0.0199592 ])
-
-#min
-#dist = np.array([ 0.20962176 ,-0.22188961 ,-0.00044311 , 0.00040148  ,0.05630106])
-
-#dist = np.array([ 0,0,0,0,0])
-
-#Teos nya
-#mtx =  np.array([[207.89466123 , 0.  ,   327.20867249],
-#                   [ 0.  ,   205.19301437, 242.26158286],
-#                   [ 0. ,     0.    ,  1.    ]])
-#dist = np.array(  [0.17486646 ,-0.1696708, -0.00025329, 0.00033005,0.03769554]   )
-
-#min fast i mm
+#Distortion and camera matrix.
 dist = np.array([ 2.43077029e-01 ,-2.88500502e-01 ,-3.30439375e-04  ,6.91331506e-05 ,8.45047348e-02])
 mtx = np.array([[231.45889158 ,  0.   ,      326.96473621],
  [  0.       ,  229.12660112 ,236.31074878],

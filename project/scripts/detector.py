@@ -31,7 +31,7 @@ class Detector(nn.Module):
         """
         super(Detector, self).__init__()
 
-        self.features = models.mobilenet_v2(pretrained=True).features
+        self.features = models.mobilenet_v2(pretrained=True).features #USED ONLY FOR FEATURE EXTRACTION.
         # output of mobilenet_v2 will be 1280x15x20 for 480x640 input images
 
         self.head = nn.Conv2d(in_channels=1280, out_channels=5 +
@@ -59,7 +59,9 @@ class Detector(nn.Module):
         return out
 
     def decode_output(self, out, threshold=None, topk=100):
-        """Convert output to list of bounding boxes.
+        """Convert output to list of bounding boxes and find the Bounding box with a confidence higher than a given "threshold", then look for the
+        corresponding 15 channels for that bounding box and find the one with the highest probability, that will be the corresponding class (Traffic sign) that
+        the network has predicted.
 
         Args:
             out (torch.tensor):
@@ -117,7 +119,6 @@ class Detector(nn.Module):
                 ).item()
 
                 # Find index of channel with highest probability for classification
-                #o = o.cpu()
                 category_probability_ind = np.argmax(o[5:, bb_index[0], bb_index[1]])
                 # Get confidence of bounding box with highest probability.
                 confidence = o[4, bb_index[0], bb_index[1]]
@@ -139,9 +140,10 @@ class Detector(nn.Module):
         return bbs
 
     def input_transform(self, image, anns):
-        """Prepare image and targets on loading.
+        """Prepare image and targets on loading. Normalize, data augmentation(blurring, colorjitter), set correct labels. ALOT of other data augmentation
+        was tried, such as flipping, perspective transformation and translations but didnt yield better results.
 
-        This function is called before an image is added to a batch.
+        This function is called before an image is added to a batch. That is before we send it through the network.
         Must be passed as transforms function to dataset.
 
         Args:
@@ -269,9 +271,10 @@ class Detector(nn.Module):
 
         return image, target
     def input_transform2(self, image, anns):
-        """Prepare image and targets on loading.
+        """Prepare image and targets on loading. Normalize, data augmentation(blurring, colorjitter), set correct labels. ALOT of other data augmentation
+        was tried, such as flipping, perspective transformation and translations but didnt yield better results.
 
-        This function is called before an image is added to a batch.
+        This function is called before an image is added to a batch. That is before we send it through the network.
         Must be passed as transforms function to dataset.
 
         Args:

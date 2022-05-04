@@ -30,7 +30,12 @@ BATCH_SIZE = 5
 
 
 def compute_loss(prediction_batch, target_batch):
-    """Compute loss between predicted tensor and target tensor.
+    """Compute loss between predicted tensor and target tensor. Higher loss for bad predictions given by the network and vice versa.
+    We use crossentropyloss for the classification where we compare the 15 channels probability vector given by the network to
+    the correct known label (class). if the network spits out highest probability on the correct label then the loss will be small. Here we also use
+    weighted cross entropy loss where we give a a higher weight for the traffic signs we have less labeled data on, therefore it will get a higher loss
+    if we have less data on a traffic sign so that it forces the network to learn that sign better.
+    Mean square error loss is used for the detection.
 
     Args:
         prediction_batch: Batched predictions. Shape (N,C,H,W).
@@ -87,7 +92,11 @@ def compute_loss(prediction_batch, target_batch):
 
 
 def train(device="gpu"):
-    """Train the network.
+    """Train the network. We load a batch of images, in this case 5 images and we run it through the network, we calculate the loss of whatever
+    the network gives us, and then we get new network parameters that will yield better results next iteration with respect to the loss. In the beginning, the network
+    gives us random numbers on classification and detection, for every iteration we calculate loss and the network parameters gets better.
+    We also do validation run on a validation set and we measure performance based on recall and precision. Higher threshold yields higher precision and
+    vice versa. For the training i vary the threshold to get a sense of different recall/precision values, We want to maximize BOTH of them.
 
     Args:
         device: The device to train on."""
