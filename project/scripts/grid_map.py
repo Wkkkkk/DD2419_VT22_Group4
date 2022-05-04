@@ -13,7 +13,7 @@ class GridMap:
         # Grid map parameters
         self.bounds = [np.array(world['airspace']["min"]), np.array(world['airspace']["max"])]
         self.resolution = (self.bounds[1][0] - self.bounds[0][0]) / 30
-        self.dim = ((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
+        self.dim = np.ceil((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
         self.occupied_space = 1
         self.c_space = 2
         self.safety_radius = safety_radius
