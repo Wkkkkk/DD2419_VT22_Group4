@@ -50,10 +50,10 @@ class Planner:
         loc_clusters_copy = self.loc_clusters[:]
 
         # If the goal is inside a localization cluster, remove the cluster from the cluster list.
-        for cluster_index, cluster in enumerate(loc_clusters_copy):
+        for cluster in loc_clusters_copy:
             for loc_pose in cluster:
                 if np.array_equal(loc_pose.index, node.index):
-                    loc_clusters_copy.pop(cluster_index)
+                    loc_clusters_copy.remove(cluster)
 
         # Iterate through all the nodes from goal to start
         while node is not self.start:
@@ -62,24 +62,25 @@ class Planner:
                 # Check if there is an obstacle between the node and q
                 if not self.grid.raytrace(node.index, q.index):
                     # If q is inside any localization cluster retrieve yaw and index of those clusters
-                    cluster_indices = []
+                    current_clusters = []
                     loc_yaw = []
-                    for cluster_index, cluster in enumerate(loc_clusters_copy):
+                    for cluster in loc_clusters_copy:
                         for loc_pose in cluster:
                             if np.array_equal(loc_pose.index, q.index):
                                 loc_yaw.append(loc_pose.yaw)
-                                cluster_indices.append(cluster_index)
+                                current_clusters.append(cluster)
 
                     if len(loc_yaw) > 0:
                         # Retrieve all poses included in the clusters which q coincides with
                         # and remove those clusters from the cluster list.
                         cluster_poses = []
-                        for i in cluster_indices:
-                            cluster_poses += loc_clusters_copy.pop(i)
-                        cluster_nodes = []
-
+                        for cluster in current_clusters:
+                            cluster_poses += cluster
+                            loc_clusters_copy.remove(cluster)
+                           
                         # Retrieve all nodes in the path (that do not have an obstacle in the way)
                         # that are inside the clusters that q coincides with.
+                        cluster_nodes = []
                         while q is not None:
                             for pose in cluster_poses:
                                 if np.array_equal(pose.index, q.index):
