@@ -173,7 +173,7 @@ class Crazyflie:
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
 
-            print("Rotating: ", yaw, " to ", goal_yaw)
+            # print("Rotating: ", yaw, " to ", goal_yaw)
             rospy.sleep(dt)
 
         # Hover for a while

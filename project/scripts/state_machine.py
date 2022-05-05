@@ -39,7 +39,7 @@ class StateMachine(object):
         self.height = 0.5  # Height at which to fly
 
         # Initialize class objects
-        self.grid = GridMap(0.2, world, self.height)
+        self.grid = GridMap(0.25, world, self.height)
         self.path_executer = PathExecution()
         self.tf = Transform()
         self.cf = Crazyflie("cf1")

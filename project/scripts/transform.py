@@ -85,7 +85,7 @@ class Transform:
         msg.x = m.pose.position.x
         msg.y = m.pose.position.y
         msg.z = m.pose.position.z
-        msg.yaw = np.rad2deg(self.quaternion2yaw(m.pose.orientation))
+        msg.yaw = self.quaternion2yaw(m.pose.orientation)
         return msg
 
     def posestamped_to_array(self, m):

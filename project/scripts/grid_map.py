@@ -222,7 +222,7 @@ class GridMap:
 
     def coordinate_in_bounds(self, coord):
         """ Check if coordinates is inside the world """
-        if coord[0] < self.bounds[0][0] or coord[1] < self.bounds[0][1] or coord[0] > self.bounds[1][0] or coord[1] > self.bounds[1][1]:
+        if coord[0] <= self.bounds[0][0] or coord[1] <= self.bounds[0][1] or coord[0] >= self.bounds[1][0] or coord[1] >= self.bounds[1][1]:
             return False
         else:
             return True

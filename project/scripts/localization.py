@@ -137,11 +137,12 @@ class KalmanFilter:
         self.H = np.eye(3)
         # measurement uncertainty
         self.R = np.eye(3) * 0.3
+        self.R2 = np.eye(3) * 3
         # transition uncertainty
         self.Q = np.eye(3) * 0.01
 
 
-    def update(self, msg):
+    def update(self, msg, is_sign=True):
         p, q = transform_stamped_to_pq(msg)
         roll, pitch, yaw = euler_from_quaternion(q)
 
@@ -162,7 +163,10 @@ class KalmanFilter:
         y[2] = (y[2] + np.pi) % (2 * np.pi) - np.pi
 
         # Kalman Gain
-        S = np.dot(np.dot(self.H, self.P), np.transpose(self.H)) + self.R
+        R = self.R
+        if is_sign:
+            R = self.R2
+        S = np.dot(np.dot(self.H, self.P), np.transpose(self.H)) + R
         K = np.dot(np.dot(self.P, np.transpose(self.H)), np.linalg.inv(S))
 
         # Posterier mu and sigma
@@ -250,7 +254,6 @@ class Localization(object):
             if not self.tf_buffer.can_transform('map', 'world/roadsign_' + sign_category, rospy.Time(), rospy.Duration(3.0)):
                 print("Can't find sign in the world", sign_category)
                 continue
-            pass
 
             # Find sign position in map frame
             m = self.tf_buffer.lookup_transform('map',
@@ -270,7 +273,8 @@ class Localization(object):
             T = np.dot(M, O_inv)
             transform = transform_from_hcmatrix(T, 'map', 'cf1/odom')
             #print(transform)
-            self.transform = self.kf.update(transform)
+            self.transform = self.kf.update(transform, True)
+            print("Matched a sign:", sign_id, sign_category)
 
             # ready to take off
             self.initialization.publish(Empty())

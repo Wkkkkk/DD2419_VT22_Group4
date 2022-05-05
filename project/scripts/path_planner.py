@@ -126,7 +126,9 @@ class Planner:
 
         rospy.loginfo("Path planner is running!")
 
-        self.initialize_planning(start_pose, goal_pose)
+        if not self.initialize_planning(start_pose, goal_pose):
+            rospy.loginfo("Pose outside of the map!")
+            return None
 
         goal_found = False
         open_set = []  # Priority queue
@@ -178,24 +180,22 @@ class Planner:
 
     def initialize_planning(self, start_pose,  goal_pose):
         """ Generates nodes for start pose and goal pose and inserts them in the grid map """
-
         start_yaw = self.tf.quaternion2yaw(start_pose.pose.orientation)
         start_pos = self.tf.posestamped_to_array(start_pose)
-
         goal_yaw = self.tf.quaternion2yaw(goal_pose.pose.orientation)
         goal_pos = self.tf.posestamped_to_array(goal_pose)
 
         start = Node(self.grid.convert_to_index(start_pos), None, start_pos, start_yaw)
-
         goal = Node(self.grid.convert_to_index(goal_pos), None, goal_pos, goal_yaw)
 
-        self.start = start
-        self.goal = goal
-
-        self.grid[start.index] = start
-        self.grid[goal.index] = goal
-
-        return start, goal
+        if self.grid.index_in_bounds(start.index) and self.grid.index_in_bounds(goal.index):
+            self.start = start
+            self.goal = goal
+            self.grid[start.index] = start
+            self.grid[goal.index] = goal
+            return True
+        
+        return False
 
     def path_publisher(self, setpoints):
         """ Publishes the path to be visualised in Rviz """
