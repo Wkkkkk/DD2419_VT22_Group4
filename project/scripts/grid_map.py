@@ -13,7 +13,7 @@ class GridMap:
         # Grid map parameters
         self.bounds = [np.array(world['airspace']["min"]), np.array(world['airspace']["max"])]
         self.resolution = (self.bounds[1][0] - self.bounds[0][0]) / 30
-        self.dim = np.ceil((self.bounds[1] - self.bounds[0]) / self.resolution).astype(int)
+        self.dim = ((self.bounds[1] - self.bounds[0]) / self.resolution + np.ones(3)).astype(int)
         self.occupied_space = 1
         self.c_space = 2
         self.safety_radius = safety_radius
@@ -150,8 +150,8 @@ class GridMap:
         M[:3, 3] = landmark_pos
 
         # The lower leftmost and upper rightmost position of the drone from the landmark's perspective
-        pos_left = np.array([0, 0.3, -0.2, 1])
-        pos_right = np.array([0, 0.6, 0.2, 1])
+        pos_left = np.array([0, 0.4, -0.3, 1])
+        pos_right = np.array([0, 0.7, 0.3, 1])
         left_index = self.convert_to_index(np.dot(M, pos_left))
         right_index = self.convert_to_index(np.dot(M, pos_right))
         self.force_in_bounds(left_index)

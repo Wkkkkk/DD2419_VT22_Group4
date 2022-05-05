@@ -16,7 +16,7 @@ class PathExecution:
 
     def execute_path(self, setpoints):
 
-        tol_yaw = 10
+        tol_yaw = 5
 
         # Executing one set point in the path at a time.
         for setpoint in setpoints:
@@ -27,6 +27,8 @@ class PathExecution:
                 # Rotate if the difference between current yaw and set point yaw is greater than a tolerance.
                 if self.cf.yaw_difference(goal_pose.yaw) > tol_yaw:
                     self.cf.rotate(goal_pose.yaw)
-
+                
+                    print("goal yaw:", goal_pose.yaw, " actual yaw:", 
+                        self.tf.quaternion2yaw(self.cf.current_pose.pose.orientation))
                 # Fly straight to the next set point.
                 self.cf.goTo(goal_pose)

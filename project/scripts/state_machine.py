@@ -39,7 +39,7 @@ class StateMachine(object):
         self.height = 0.5  # Height at which to fly
 
         # Initialize class objects
-        self.grid = GridMap(0.5, world, self.height)
+        self.grid = GridMap(0.2, world, self.height)
         self.path_executer = PathExecution()
         self.tf = Transform()
         self.cf = Crazyflie("cf1")
@@ -102,7 +102,7 @@ class StateMachine(object):
                 yaw = self.tf.quaternion2yaw(self.current_pose.pose.orientation)
                 for r in range(3):
                     yaw += 90
-                    yaw = np.mod((yaw + 180), 360) - 180
+                    # yaw = np.mod((yaw + 180), 360) - 180
                     self.cf.rotate(yaw)
 
                 self.state = State.GenerateExplorationGoal

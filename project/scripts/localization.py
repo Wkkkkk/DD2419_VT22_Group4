@@ -136,7 +136,7 @@ class KalmanFilter:
         # measurement matrix: reflect the fact that we observe x and y but not the two velocities
         self.H = np.eye(3)
         # measurement uncertainty
-        self.R = np.eye(3) * 0.1
+        self.R = np.eye(3) * 0.3
         # transition uncertainty
         self.Q = np.eye(3) * 0.01
 

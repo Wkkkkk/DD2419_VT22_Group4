@@ -66,6 +66,7 @@ class Crazyflie:
 
             rospy.sleep(dt)
 
+        goal.yaw = self.position_msg.yaw
         # Hover for a while
         start = rospy.get_time()
         while not rospy.is_shutdown():
@@ -172,6 +173,7 @@ class Crazyflie:
             self.position_msg.header.stamp = rospy.Time.now()
             self.pub_position.publish(self.position_msg)
 
+            print("Rotating: ", yaw, " to ", goal_yaw)
             rospy.sleep(dt)
 
         # Hover for a while
@@ -236,6 +238,7 @@ if __name__ == '__main__':
     while not rospy.is_shutdown() and cf.current_pose is None:
         continue
 
+    print("ready to take")
     cf.takeOff(0.4)
     #cf.land()
 
