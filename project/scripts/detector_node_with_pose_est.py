@@ -200,9 +200,9 @@ def object_keypoint_to_3d(object_keypoints, image_width, image_height):
     real_width = 0.2
     real_height = 0.2
     for i in object_keypoints:
-        #111object_points.append(((i.pt[0]-image_width/2)*(real_width/image_width), (i.pt[1]-image_height/2)*(real_height/image_height), 0))
+        #object_points.append(((i.pt[0])*(real_width/image_width), (i.pt[1])*(real_height/image_height), 0))
+        #object_points.append(((i.pt[0]-image_width/2)*(real_width/image_width), (i.pt[1]-image_height/2)*(real_height/image_height), 0))
         object_points.append((-(i.pt[1] - image_height/2)*(real_width/image_width), 0, (i.pt[0]-image_width/2)*(real_height/image_height)))
-
         #object_points.append((0, -i.pt[0]*(real_width/image_width), -i.pt[1]*(real_height/image_height)))
 
     return np.array(object_points)
@@ -309,23 +309,21 @@ def pose_estimation(camera_image, bb_info):
     max_inliers = 0
 
     #Use SolvePnPRansac to get the estimated pose.
-    pairs = int(min(len(object_points), len(image_points)))
-    if pairs > 4:
+    maximum_samples = int(min(len(object_points), len(image_points)))
+    if maximum_samples > 4:
         for i in range(25):
-            obj_samp, img_samp = zip(*random.sample(list(zip(object_points, image_points)), pairs))
-            obj_samp = np.array([k for k in obj_samp])
-            img_samp = np.array([j for j in img_samp])
+            object_samp, image_samp = zip(*random.sample(list(zip(object_points, image_points)), pairs))
+            object_samp = np.array([k for k in object_samp])
+            image_samp = np.array([j for j in image_samp])
 
-            _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(obj_samp, img_samp, mtx, dist,flags=SOLVEPNP_ITERATIVE)
+            _, r_vec, t_vec, in_liers= cv2.solvePnPRansac(object_samp, image_samp, mtx, dist,flags=SOLVEPNP_ITERATIVE)
 
-            if in_liers is not None:
-                n_in = len(in_liers)
-                if n_in > max_inliers:
-                    max_inliers = n_in
-                    print(max_inliers)
-                    rvec, tvec, inliers = r_vec, t_vec, in_liers
-
-
+            if in_liers and len(in_liers) > max_inliers:
+                # number_inliers = len(in_liers)
+                # if number_inliers > max_inliers:
+                max_inliers = len(in_liers)
+                print(max_inliers)
+                rvec, tvec, inliers = r_vec, t_vec, in_liers
 
     #Remove some outliers, if estimated pose is NaN, far away or too close.
     if tvec[0] > 2 or tvec[1] > 2 or tvec[2] > 3:# or type(inliers) == NoneType:
@@ -401,7 +399,7 @@ def publish_pose(sign_pose, sign_id, category, confidence):
     DetectedArray_msg.detections = [Detected_msg]
 
     """ Publish to /detected_sign """
-    detected_pub.publish(DetectedArray_msg)
+    # detected_pub.publish(DetectedArray_msg)
 
     """ Publish to /intruder_detection_sign to perform intruder detection """
     intruder_det_pub.publish(DetectedArray_msg)
@@ -411,7 +409,7 @@ rospy.init_node('detect_node')
 
 # Init publisher
 image_pub = rospy.Publisher("/bbox", Image, queue_size=1)
-detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=10)
+# detected_pub = rospy.Publisher("/detected_sign", DetectionArray, queue_size=10)
 intruder_det_pub = rospy.Publisher("/intruder_detection_sign", DetectionArray, queue_size=10)
 
 # Init TF

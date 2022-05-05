@@ -50,6 +50,7 @@ class intruder_detection:
 
         self.detected_sub = rospy.Subscriber("/intruder_detection_sign", DetectionArray, self.callback, queue_size = 10)
         self.intruder_pub = rospy.Publisher("/intruder_topic", String, queue_size = 2)
+        self.detected_pub = rospy.Publisher("/detected_sign", String, queue_size = 2)
         # self.intruder_pose_pub = rospy.Publisher("/intruder_topic", String, queue_size = 10)
 
         rospy.loginfo('Intruder detection running')
@@ -68,12 +69,15 @@ class intruder_detection:
                 sign = self.categories[detected_sign_id]
                 self.intruder_pub.publish("NO INTRUDER DETECTED: We have detected " + sign)
                 rospy.loginfo("NO INTRUDER DETECTED: We have detected " + sign)
+                self.detected_pub.publish(msg)
+
 
             else:
                 m.intruder = True
                 sign = self.categories[detected_sign_id]
                 self.intruder_pub.publish("INTRUDER DETECTED: We have detected " + sign)
                 rospy.loginfo("INTRUDER DETECTED: We have detected " + sign)
+                self.detected_pub.publish(msg)
 
 
                    #   # marker pose is in frame camera_link
